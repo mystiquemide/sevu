@@ -88,7 +88,7 @@ const caption = computed(() => {
 .withdrawn .track i { background: var(--text-3); opacity: 0.4; }
 .ready-text { color: var(--ready); }
 .refusal {
-  position: absolute; right: 20px; bottom: 36px; display: flex; white-space: nowrap; flex-direction: column; align-items: center; gap: 2px;
+  position: absolute; right: 20px; top: 116px; display: flex; white-space: nowrap; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 16px; border: 2.5px solid var(--wax); border-radius: var(--r-sm); color: var(--wax);
   font-family: var(--mono); background: rgba(251, 248, 242, 0.92); transform: rotate(-6deg);
   animation: refuse 420ms var(--ease) both;

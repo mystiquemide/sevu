@@ -110,6 +110,23 @@ describe('POST /v1/deposits', () => {
     expect(await errorCode(await post('/v1/deposits', await signedBody({ signer: other })))).toBe('BAD_INTENT_SIGNATURE')
   })
 
+  it('returns a structured error for a malformed intent signature, not INTERNAL', async () => {
+    const body = await signedBody()
+    body.intentSig = `0x${'a'.repeat(130)}` as `0x${string}`
+    const res = await post('/v1/deposits', body)
+    expect(res.status).toBe(422)
+    expect(await errorCode(res)).toBe('BAD_INTENT_SIGNATURE')
+  })
+
+  it('returns a structured error for a malformed permit signature, not INTERNAL', async () => {
+    const body = await signedBody()
+    body.permit.r = `0x${'0'.repeat(64)}` as `0x${string}`
+    body.permit.s = `0x${'f'.repeat(64)}` as `0x${string}`
+    const res = await post('/v1/deposits', body)
+    expect(res.status).toBe(422)
+    expect(await errorCode(res)).toBe('BAD_PERMIT_SIGNATURE')
+  })
+
   it('rejects a permit value that differs from the amount', async () => {
     expect(await errorCode(await post('/v1/deposits', await signedBody({ permitValue: 6_000_000n })))).toBe('BAD_REQUEST')
   })

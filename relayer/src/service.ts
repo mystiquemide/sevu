@@ -32,6 +32,15 @@ export const defaultConfig: Omit<RelayerConfig, 'maxLockAmount' | 'dailyGasBudge
   pendingTtlMs: 10 * 60 * 1000,
 }
 
+/** A signature that cannot even be parsed or recovered is a mismatch, not a server error. */
+async function verifies(check: () => Promise<boolean>): Promise<boolean> {
+  try {
+    return await check()
+  } catch {
+    return false
+  }
+}
+
 export type Logger = (event: Record<string, unknown>) => void
 
 export class RelayerService {
@@ -80,14 +89,14 @@ export class RelayerService {
       if (!this.deposits.allowed(owner)) throw new RelayError('RATE_LIMITED', 'Too many locks today, try again tomorrow')
       this.requireBudget()
 
-      const intentOk = await verifyTypedData({
+      const intentOk = await verifies(() => verifyTypedData({
         address: owner,
         domain: lockIntentDomain(this.chain.lockAddress, this.cfg.chainId),
         types: lockIntentTypes,
         primaryType: 'LockIntent',
         message: intent,
         signature: req.intentSig,
-      })
+      }))
       if (!intentOk) throw new RelayError('BAD_INTENT_SIGNATURE', 'Lock signature does not match the owner')
 
       const [lockNonce, tokenNonce, balance] = await Promise.all([
@@ -101,14 +110,14 @@ export class RelayerService {
         })
       }
 
-      const permitOk = await verifyTypedData({
+      const permitOk = await verifies(() => verifyTypedData({
         address: owner,
         domain: usdt0Domain(this.chain.tokenAddress),
         types: permitTypes,
         primaryType: 'Permit',
         message: { owner, spender: this.chain.lockAddress, value: permit.value, nonce: tokenNonce, deadline: permit.deadline },
         signature: { v: BigInt(permit.v), r: permit.r, s: permit.s },
-      })
+      }))
       if (!permitOk) throw new RelayError('BAD_PERMIT_SIGNATURE', 'Permit signature does not match the owner')
       if (balance < intent.amount) throw new RelayError('INSUFFICIENT_BALANCE', 'Not enough USDT for this lock')
 
