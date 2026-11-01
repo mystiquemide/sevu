@@ -108,3 +108,26 @@ describe('pending attempt (audit L-1)', () => {
     expect(store.size).toBe(0)
   })
 })
+
+describe('NIM jars (BR-006)', () => {
+  it('parses and formats NIM in luna', async () => {
+    const { parseNim, formatNim } = await import('../src/lib/nimiq')
+    expect(parseNim('150')).toBe(15_000_000)
+    expect(parseNim('12.5')).toBe(1_250_000)
+    expect(parseNim('1.123456')).toBeNull()
+    expect(formatNim(15_000_000)).toBe('150')
+    expect(formatNim(1_250_000)).toBe('12.5')
+  })
+
+  it('never lets jars claim more than is really staked', async () => {
+    const { jarShares } = await import('../src/lib/jars')
+    const jars = [
+      { id: 'a', name: 'Laptop', target: 500_00000, added: 300_00000 },
+      { id: 'b', name: 'Trip', target: 200_00000, added: 100_00000 },
+    ]
+    expect(jarShares(jars, 400_00000)).toEqual({ claimed: [300_00000, 100_00000], shortfall: false })
+    const cut = jarShares(jars, 200_00000)
+    expect(cut.shortfall).toBe(true)
+    expect(cut.claimed[0]! + cut.claimed[1]!).toBeLessThanOrEqual(200_00000)
+  })
+})

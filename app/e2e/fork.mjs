@@ -2,6 +2,7 @@
 // with a mock EIP-1193 wallet that starts on chain 0x1 like Nimiq Pay.
 // Usage: POLYGON_RPC=https://... node e2e/fork.mjs   (needs anvil, forge build, playwright)
 import { spawn, execSync } from 'node:child_process'
+import { createServer } from 'node:http'
 import { readFileSync, mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -33,6 +34,27 @@ const root = fileURLToPath(new URL('../..', import.meta.url))
 const ANVIL = 'http://127.0.0.1:8556'
 const RELAYER = 'http://127.0.0.1:8788'
 const APP = 'http://127.0.0.1:4179'
+const NIM_RPC = 'http://127.0.0.1:8799'
+// A stand-in for the Nimiq chain: one staker record, updated when the mock Nimiq Pay wallet stakes.
+const NIM_ADDR = 'NQ12 3456 7890 ABCD EFGH JKLM NPQR STUV'
+const VALIDATORS = [
+  { address: 'NQ64 29R7 YHBJ QBE8 C9LN LE6Q S7F4 HKN7 S4DG', balance: 758_711_240_00000 },
+  { address: 'NQ05 U1RF QJNH JCS1 RDQX 4M3Y 60KR K6CN 5LKC', balance: 709_095_244_00000 },
+]
+const nimState = { staker: null }
+const nimServer = createServer((req, res) => {
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' }
+  if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end() }
+  let body = ''
+  req.on('data', (c) => (body += c))
+  req.on('end', () => {
+    const { method, id } = JSON.parse(body)
+    const reply = (o) => { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify({ jsonrpc: '2.0', id, ...o })) }
+    if (method === 'getActiveValidators') return reply({ result: { data: VALIDATORS } })
+    if (method === 'getStakerByAddress') return nimState.staker ? reply({ result: { data: nimState.staker } }) : reply({ error: { code: -32603, message: 'Internal error', data: `No staker with address: ${NIM_ADDR}` } })
+    reply({ error: { code: -32601, message: 'not mocked' } })
+  })
+}).listen(8799, '127.0.0.1')
 const USDT0 = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
 const RELAYER_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' // anvil default key
 const procs = []
@@ -99,7 +121,7 @@ try {
 
   execSync('npx vite build --logLevel error', {
     cwd: `${root}/app`, stdio: 'inherit',
-    env: { ...process.env, VITE_SEVU_LOCK_ADDRESS: lock, VITE_SEVU_LEGACY_LOCKS: legacyLock, VITE_RELAYER_URL: RELAYER, VITE_POLYGON_RPC: ANVIL },
+    env: { ...process.env, VITE_SEVU_LOCK_ADDRESS: lock, VITE_SEVU_LEGACY_LOCKS: legacyLock, VITE_RELAYER_URL: RELAYER, VITE_POLYGON_RPC: ANVIL, VITE_NIMIQ_RPC: NIM_RPC },
   })
   start('npx', ['vite', 'preview', '--port', '4179', '--strictPort', '--host', '127.0.0.1'], { cwd: `${root}/app`, stdio: 'ignore' })
   await waitFor(async () => (await fetch(APP)).ok, 'app')
@@ -306,12 +328,61 @@ try {
     await page.getByText('Nimiq Pay is not on Polygon').waitFor({ state: 'detached', timeout: 10000 })
     check('switching back to Polygon restores the app', !(await page.getByRole('button', { name: 'Lock USDT' }).isDisabled()))
   }
+  // 5. NIM jars: goals over the user's own stake (FR-016, BR-006)
+  {
+    const page = await walletPage()
+    await page.exposeFunction('__nimStake', (kind, value, delegation) => {
+      const prev = nimState.staker ?? { balance: 0, inactiveBalance: 0, retiredBalance: 0, delegation }
+      nimState.staker = { ...prev, balance: prev.balance + value, delegation: prev.delegation ?? delegation }
+      return `tx-${kind}-${value}`
+    })
+    await page.addInitScript((addr) => {
+      window.nimiq = {
+        async listAccounts() { return [addr] },
+        async getBalance() { return 500_00000 },
+        async sendNewStakerTransaction(tx) { return window.__nimStake('new', tx.value, tx.delegation) },
+        async sendStakeTransaction(tx) { return window.__nimStake('stake', tx.value, null) },
+      }
+    }, NIM_ADDR)
+    await page.goto(APP)
+    await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
+    await page.getByRole('tab', { name: 'NIM jars' }).click()
+    await page.getByText('They lock nothing').waitFor({ timeout: 15000 })
+    check('jars say plainly they lock nothing (BR-006)', true)
+    await page.getByRole('button', { name: 'New jar' }).click()
+    await page.getByLabel('What is it for?').fill('New laptop')
+    await page.getByLabel('Goal (NIM)').fill('1000')
+    await page.getByRole('button', { name: 'Create jar' }).click()
+    await page.getByRole('button', { name: /New laptop/ }).click()
+    await page.getByLabel('Stake toward it (NIM)').fill('50')
+    const minMsg = await page.getByText('at least 100 NIM (Nimiq rule)').isVisible()
+    check('first stake under 100 NIM is refused in the UI', minMsg && (await page.getByRole('button', { name: 'Stake' }).isDisabled()))
+    await page.getByLabel('Stake toward it (NIM)').fill('150')
+    await page.getByRole('radio').first().check()
+    await shot(page, '12-jar-stake')
+    await audit(page, '12-jar-stake')
+    await page.getByRole('button', { name: 'Stake' }).click()
+    await page.getByRole('heading', { name: 'Staked' }).waitFor({ timeout: 20000 })
+    check('first stake creates the staker with the chosen validator', nimState.staker?.balance === 150_00000 && nimState.staker?.delegation === VALIDATORS[0].address)
+    await page.getByRole('button', { name: 'Back to jars' }).click()
+    await page.getByText('150 of 1,000 NIM').waitFor({ timeout: 15000 })
+    check('jar progress reads 150 of 1,000 NIM (15%)', await page.getByText('15%').isVisible())
+    await shot(page, '13-jars')
+    await audit(page, '13-jars')
+    // Stake moved outside Sevu: jars must not claim more than the chain shows
+    nimState.staker = { ...nimState.staker, balance: 100_00000 }
+    await page.getByRole('tab', { name: 'USDT locks' }).click()
+    await page.getByRole('tab', { name: 'NIM jars' }).click()
+    await page.getByText('Less is staked than your jars add up to').waitFor({ timeout: 15000 })
+    check('jars shrink to what is really staked when stake moves outside Sevu', await page.getByText('100 of 1,000 NIM').isVisible())
+  }
   await browser.close()
 } catch (e) {
   try { for (const ctx of (globalThis.__browser?.contexts() ?? [])) for (const pg of ctx.pages()) await pg.screenshot({ path: `${root}/app/e2e/screens/fail-shot.png` }) } catch {}
   check('run', false, e.message)
 } finally {
   for (const p of procs) { try { process.kill(-p.pid, 'SIGTERM') } catch {} }
+  nimServer.close()
 }
 if (a11y.length) {
   const bad = a11y.filter((x) => x.violations.length)

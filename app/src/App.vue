@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Address } from 'viem'
 import AccountSheet from './components/AccountSheet.vue'
 import CreateLock from './components/CreateLock.vue'
+import Jars from './components/Jars.vue'
 import Envelope from './components/Envelope.vue'
 import LockDetail from './components/LockDetail.vue'
 import LockRow from './components/LockRow.vue'
@@ -27,6 +28,7 @@ const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
 const selectedKey = ref<string | null>(null)
 const metaVersion = ref(0)
 const wrongChain = ref(false)
+const mode = ref<'locks' | 'jars'>('locks')
 const showAccount = ref(false)
 const switching = ref(false)
 let stopWatching: (() => void) | undefined
@@ -225,6 +227,12 @@ onUnmounted(() => {
     <Rescue v-else-if="view === 'rescue' && owner" :owner="owner" :locks="locks" :now="now" @back="go('home')" @changed="changed" />
 
     <section v-else-if="view === 'home'" class="section">
+      <div class="modes" role="tablist" aria-label="Savings type">
+        <button role="tab" class="mode" :aria-selected="mode === 'locks'" @click="mode = 'locks'">USDT locks</button>
+        <button role="tab" class="mode" :aria-selected="mode === 'jars'" @click="mode = 'jars'">NIM jars</button>
+      </div>
+      <Jars v-if="mode === 'jars'" />
+      <template v-else>
       <div class="group">
         <div class="stack">
           <p class="label">Locked in Sevu</p>
@@ -267,6 +275,7 @@ onUnmounted(() => {
         </div>
       </details>
 
+      </template>
       <footer class="foot">
         <p class="meta">No owner. No admin. No upgrades.</p>
         <a class="link" href="#/rescue" @click.prevent="go('rescue')">Withdraw directly</a>
@@ -277,6 +286,9 @@ onUnmounted(() => {
 
 <style scoped>
 .top { min-height: 44px; margin-bottom: 24px; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 12px; background: var(--raised); }
+.mode { min-height: 44px; border: 0; border-radius: 8px; background: transparent; font: inherit; color: var(--text-2); cursor: pointer; transition: background-color 150ms var(--ease), color 150ms var(--ease); }
+.mode[aria-selected='true'] { background: var(--card); color: var(--text); box-shadow: var(--shadow-sm); }
 .account { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; margin-right: -12px; border: 0; border-radius: var(--r-control); background: none; cursor: pointer; transition: background-color 150ms var(--ease); }
 .account:hover { background: var(--raised); }
 .chain { display: flex; flex-direction: column; gap: 4px; margin-bottom: 24px; }
