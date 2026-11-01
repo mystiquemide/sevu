@@ -1,0 +1,20 @@
+[Unit]
+Description=Sevu relayer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sevu
+WorkingDirectory=/opt/sevu/relayer
+EnvironmentFile=/etc/sevu/relayer.env
+ExecStart=/usr/bin/node dist/src/server.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

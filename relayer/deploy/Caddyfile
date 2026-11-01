@@ -1,0 +1,4 @@
+# Replace with the domain pointing at your VPS. Caddy gets the TLS certificate automatically.
+relayer.example.com {
+	reverse_proxy 127.0.0.1:8787
+}
