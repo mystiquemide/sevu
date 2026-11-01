@@ -21,6 +21,8 @@ const APP = 'http://127.0.0.1:4179'
 const USDT0 = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F'
 const RELAYER_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' // anvil default key
 const procs = []
+// Start each helper in its own process group so cleanup also stops children that npx leaves behind.
+const start = (cmd, args, opts) => { const p = spawn(cmd, args, { ...opts, detached: true }); procs.push(p); return p }
 const results = []
 const check = (name, ok, detail = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` (${detail})` : ''}`) }
 
@@ -33,8 +35,10 @@ const chain = { ...polygon, rpcUrls: { default: { http: [ANVIL] } } }
 const pub = createPublicClient({ chain, transport: http(ANVIL) })
 const testClient = createTestClient({ chain, mode: 'anvil', transport: http(ANVIL) })
 
+async function portFree(url) { try { await fetch(url); return false } catch { return true } }
 try {
-  procs.push(spawn('anvil', ['--fork-url', RPC, '--port', '8556', '--silent'], { stdio: 'ignore' }))
+  for (const u of [ANVIL, RELAYER, APP]) if (!(await portFree(u))) throw new Error(`${u} is already in use; stop the old process first`)
+  start('anvil', ['--fork-url', RPC, '--port', '8556', '--silent'], { stdio: 'ignore' })
   await waitFor(() => pub.getBlockNumber(), 'anvil')
 
   const { bytecode } = JSON.parse(readFileSync(`${root}/contracts/out/SevuLock.sol/SevuLock.json`, 'utf8'))
@@ -56,20 +60,21 @@ try {
   }
   check('owner funded with 20 USDT0 and 0 POL', (await bal(owner.address)) === 20_000_000n && (await pub.getBalance({ address: owner.address })) === 0n)
 
-  procs.push(spawn('npx', ['tsx', 'src/server.ts'], {
+  start('npx', ['tsx', 'src/server.ts'], {
     cwd: `${root}/relayer`, stdio: 'ignore',
     env: { ...process.env, RELAYER_PRIVATE_KEY: RELAYER_KEY, POLYGON_RPC_URLS: ANVIL, SEVU_LOCK_ADDRESS: lock, USDT0_ADDRESS: USDT0, ALLOWED_ORIGINS: APP, PORT: '8788' },
-  }))
+  })
   await waitFor(async () => (await fetch(`${RELAYER}/v1/health`)).ok, 'relayer')
 
   execSync('npx vite build --logLevel error', {
     cwd: `${root}/app`, stdio: 'inherit',
     env: { ...process.env, VITE_SEVU_LOCK_ADDRESS: lock, VITE_RELAYER_URL: RELAYER, VITE_POLYGON_RPC: ANVIL },
   })
-  procs.push(spawn('npx', ['vite', 'preview', '--port', '4179', '--strictPort', '--host', '127.0.0.1'], { cwd: `${root}/app`, stdio: 'ignore' }))
+  start('npx', ['vite', 'preview', '--port', '4179', '--strictPort', '--host', '127.0.0.1'], { cwd: `${root}/app`, stdio: 'ignore' })
   await waitFor(async () => (await fetch(APP)).ok, 'app')
 
   const browser = await chromium.launch()
+  globalThis.__browser = browser
   mkdirSync(`${root}/app/e2e/screens`, { recursive: true })
 
   // 1. Outside Nimiq Pay
@@ -125,10 +130,10 @@ try {
   {
     const page = await walletPage({ reject: true })
     await page.goto(APP)
-    await page.getByText('Saved in Sevu').waitFor({ timeout: 15000 })
+    await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
     check('connects and switches 0x1 to Polygon', true)
     await createLock(page, '5')
-    await page.getByText('Signing cancelled.').waitFor({ timeout: 10000 })
+    await page.getByText('Signing cancelled').waitFor({ timeout: 10000 })
     check('rejected signature shows cancel message, nothing sent', (await bal(lock)) === 0n)
     await page.close()
   }
@@ -137,7 +142,7 @@ try {
   {
     const page = await walletPage()
     await page.goto(APP)
-    await page.getByText('Saved in Sevu').waitFor({ timeout: 15000 })
+    await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
     await page.getByText('Nothing sealed yet').waitFor({ timeout: 15000 })
     await shot(page, '01-home-empty')
 
@@ -211,9 +216,10 @@ try {
   }
   await browser.close()
 } catch (e) {
+  try { for (const ctx of (globalThis.__browser?.contexts() ?? [])) for (const pg of ctx.pages()) await pg.screenshot({ path: `${root}/app/e2e/screens/fail-shot.png` }) } catch {}
   check('run', false, e.message)
 } finally {
-  for (const p of procs) p.kill()
+  for (const p of procs) { try { process.kill(-p.pid, 'SIGTERM') } catch {} }
 }
 const failed = results.filter((r) => !r.ok).length
 console.log(`\n${results.length - failed}/${results.length} checks passed`)

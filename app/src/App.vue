@@ -2,14 +2,15 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Address } from 'viem'
 import CreateLock from './components/CreateLock.vue'
-import LockCard from './components/LockCard.vue'
+import Envelope from './components/Envelope.vue'
 import LockDetail from './components/LockDetail.vue'
+import LockRow from './components/LockRow.vue'
 import Rescue from './components/Rescue.vue'
 import Wordmark from './components/Wordmark.vue'
 import { chainTime, locksOf, usdtBalance, type LockRecord } from './lib/chain'
 import { friendlyError, type FriendlyError } from './lib/errors'
-import { formatDate, formatRemaining, formatUsdt, shortAddress } from './lib/format'
-import { lockStatus } from './lib/lockView'
+import { formatUsdt, shortAddress } from './lib/format'
+import { lockProgress, lockStatus, lockTitle, statusLabel } from './lib/lockView'
 import { connect, evmProvider } from './lib/wallet'
 
 type View = 'loading' | 'outside' | 'error' | 'home' | 'create' | 'detail' | 'rescue'
@@ -29,16 +30,26 @@ const offset = ref(0)
 const now = ref(Math.floor(Date.now() / 1000))
 let timer: ReturnType<typeof setInterval> | undefined
 
+// Ready locks first, then by unlock date.
 const active = computed(() =>
   locks.value
     .filter((l) => !l.withdrawn)
-    .sort((a, b) => Number(a.unlockAt - b.unlockAt)),
+    .sort((a, b) => {
+      const ra = lockStatus(a, now.value) === 'ripe' ? 0 : 1
+      const rb = lockStatus(b, now.value) === 'ripe' ? 0 : 1
+      return ra - rb || Number(a.unlockAt - b.unlockAt)
+    }),
 )
+const featured = computed(() => active.value[0] ?? null)
+const others = computed(() => active.value.slice(1))
 const history = computed(() => locks.value.filter((l) => l.withdrawn))
-const totalSealed = computed(() => active.value.reduce((sum, l) => sum + l.amount, 0n))
+const totalLocked = computed(() => active.value.reduce((sum, l) => sum + l.amount, 0n))
 const readyCount = computed(() => active.value.filter((l) => lockStatus(l, now.value) === 'ripe').length)
-const nextUnlock = computed(() => active.value.find((l) => lockStatus(l, now.value) === 'sealed') ?? null)
 const selected = computed(() => locks.value.find((l) => l.id === selectedId.value) ?? null)
+
+function featuredLabel(l: LockRecord) {
+  return `${lockTitle(l)}: ${formatUsdt(l.amount)} USDT, ${statusLabel[lockStatus(l, now.value)]}`
+}
 
 async function refresh() {
   if (!owner.value) return
@@ -129,31 +140,31 @@ onUnmounted(() => {
 <template>
   <header class="top row">
     <Wordmark />
-    <span v-if="owner" class="faint small num">{{ shortAddress(owner) }}</span>
+    <span v-if="owner" class="meta">{{ shortAddress(owner) }}</span>
   </header>
 
-  <p v-if="!online" class="notice warn offline" role="status">You are offline. Balances may be out of date.</p>
+  <p v-if="!online" class="notice plain offline" role="status">You are offline. Amounts may be out of date.</p>
 
   <main>
-    <div v-if="view === 'loading'" class="stack" role="status" aria-label="Connecting to your wallet">
-      <div class="skeleton" style="height: 150px" />
-      <div class="skeleton" style="height: 52px" />
-      <div class="skeleton" style="height: 76px" />
+    <div v-if="view === 'loading'" class="section" role="status" aria-label="Connecting to your wallet">
+      <div class="skeleton" style="height: 72px; width: 60%" />
+      <div class="skeleton" style="height: 232px" />
     </div>
 
-    <section v-else-if="view === 'outside'" class="stack-lg fade-in">
-      <div class="stack">
-        <h1 class="hero-title">Savings nobody can touch.<br />Not even us.</h1>
-        <p class="muted">Lock USDT until a date you choose. It sits in a public contract with no owner and no admin, so nobody can move it early. Locking is free.</p>
+    <section v-else-if="view === 'outside'" class="section enter">
+      <div class="group">
+        <h1 class="page-title">Savings nobody can touch, not even us</h1>
+        <p class="secondary">Lock USDT until a date you choose. It sits in a public contract with no owner and no admin, so nobody can move it early. Locking is free.</p>
       </div>
+      <Envelope :amount="50_000_000n" :unlock-at="now + 30 * 86_400" title="Rent" :now="now" :progress="0.35" />
       <div class="card stack">
-        <h2>Open Sevu in Nimiq Pay</h2>
-        <p class="muted">Sevu runs inside Nimiq Pay so your keys never leave your phone. Open Nimiq Pay, go to Mini Apps and choose Sevu.</p>
+        <h2 class="section-title">Open Sevu in Nimiq Pay</h2>
+        <p class="secondary small">Sevu runs inside Nimiq Pay, so your keys never leave your phone. Open Nimiq Pay, go to Mini Apps and choose Sevu.</p>
       </div>
     </section>
 
-    <section v-else-if="view === 'error'" class="stack fade-in">
-      <p class="notice error" role="alert"><strong>{{ error?.title }}</strong> {{ error?.action }}</p>
+    <section v-else-if="view === 'error'" class="group enter">
+      <p class="notice error" role="alert"><strong>{{ error?.title }}</strong>{{ error?.action }}</p>
       <button class="btn" @click="start">Try again</button>
     </section>
 
@@ -164,62 +175,66 @@ onUnmounted(() => {
 
     <Rescue v-else-if="view === 'rescue' && owner" :owner="owner" :locks="locks" :now="now" @back="go('home')" @changed="changed" />
 
-    <section v-else-if="view === 'home'" class="stack-lg">
-      <div class="card summary fade-in">
-        <p class="muted small">Saved in Sevu</p>
-        <p v-if="loaded" class="total num">{{ formatUsdt(totalSealed) }} <span class="unit">USDT</span></p>
-        <div v-else class="skeleton" style="height: 44px; width: 60%" />
-        <p v-if="readyCount" class="ready small">{{ readyCount }} {{ readyCount === 1 ? 'lock is' : 'locks are' }} ready to withdraw</p>
-        <p v-else-if="nextUnlock" class="faint small num">Next unlock in {{ formatRemaining(Number(nextUnlock.unlockAt) - now) }} · {{ formatDate(nextUnlock.unlockAt) }}</p>
-        <p class="faint small num">{{ formatUsdt(balance) }} USDT available to lock</p>
+    <section v-else-if="view === 'home'" class="section">
+      <div class="group">
+        <div class="stack">
+          <p class="label">Locked in Sevu</p>
+          <p v-if="loaded" class="figure total">{{ formatUsdt(totalLocked) }}<span class="unit">USDT</span></p>
+          <div v-else class="skeleton" style="height: 44px; width: 55%" />
+          <p class="meta">{{ formatUsdt(balance) }} USDT available</p>
+        </div>
+        <button class="btn" @click="go('create')">Lock USDT</button>
       </div>
 
-      <button class="btn" @click="go('create')">Lock USDT</button>
+      <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
 
-      <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong> {{ error.action }}</p>
-
-      <div class="stack">
+      <div class="group">
         <div class="row">
-          <h2>Your locks</h2>
-          <button class="btn ghost" :disabled="refreshing" @click="refresh">{{ refreshing ? 'Refreshing...' : 'Refresh' }}</button>
+          <h2 class="section-title">{{ readyCount ? `${readyCount} ${readyCount === 1 ? 'lock is' : 'locks are'} ready to withdraw` : 'Your locks' }}</h2>
+          <button class="link" :disabled="refreshing" @click="refresh">{{ refreshing ? 'Refreshing' : 'Refresh' }}</button>
         </div>
+
         <template v-if="loaded">
-          <div v-if="!active.length" class="card empty">
-            <p class="title">Nothing sealed yet</p>
-            <p class="muted small">Pick an amount and a date. Two signatures, no gas, and it stays put until then.</p>
+          <div v-if="!featured" class="empty">
+            <Envelope :amount="0n" :unlock-at="now + 30 * 86_400" title="Your first lock" :now="now" :stamped="false" />
+            <p class="secondary small center">Nothing sealed yet. Pick an amount and a date. Two signatures, no network fee.</p>
           </div>
-          <LockCard v-for="l in active" :key="l.id.toString()" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
+          <button v-else class="featured" type="button" :aria-label="featuredLabel(featured)" @click="open(featured)">
+            <Envelope :key="`${featured.id}-${metaVersion}`" :amount="featured.amount" :unlock-at="featured.unlockAt" :title="lockTitle(featured)"
+              :status="lockStatus(featured, now)" :now="now" :progress="lockProgress(featured, now)" />
+          </button>
+          <div v-if="others.length" class="list card">
+            <LockRow v-for="l in others" :key="l.id.toString()" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
+          </div>
         </template>
-        <div v-else class="skeleton" style="height: 76px" />
+        <div v-else class="skeleton" style="height: 232px" />
       </div>
 
       <details v-if="history.length" class="history">
-        <summary class="label">History ({{ history.length }})</summary>
-        <div class="stack">
-          <LockCard v-for="l in history" :key="l.id.toString()" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
+        <summary>History ({{ history.length }})</summary>
+        <div class="list card">
+          <LockRow v-for="l in history" :key="l.id.toString()" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
         </div>
       </details>
 
-      <footer class="foot faint small">
-        <span>No owner. No admin. No upgrades.</span>
-        <a href="#/rescue" @click.prevent="go('rescue')">Withdraw directly</a>
+      <footer class="foot">
+        <p class="meta">No owner. No admin. No upgrades.</p>
+        <a class="link" href="#/rescue" @click.prevent="go('rescue')">Withdraw directly</a>
       </footer>
     </section>
   </main>
 </template>
 
 <style scoped>
-.top { margin-bottom: 20px; }
-.offline { margin-bottom: 12px; }
-.hero-title { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; }
-.summary { display: flex; flex-direction: column; gap: 6px; padding: 22px 20px; }
-.total { font-size: 40px; font-weight: 750; letter-spacing: -0.035em; }
-.unit { font-size: 20px; color: var(--ink-soft); font-weight: 650; }
-.ready { color: var(--ripe); font-weight: 650; }
-.empty { display: flex; flex-direction: column; gap: 4px; }
-.title { font-weight: 650; }
-.history summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; }
-.history .stack { margin-top: 8px; }
-.foot { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px; }
-.foot a { min-height: var(--tap); display: inline-flex; align-items: center; }
+.top { min-height: 44px; margin-bottom: 24px; }
+.offline { margin-bottom: 16px; }
+.featured { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: var(--r-card); transition: transform 150ms var(--ease); }
+.featured:active { transform: scale(0.98); }
+.empty { display: flex; flex-direction: column; gap: 12px; }
+.empty :deep(.envelope) { opacity: 0.6; box-shadow: none; }
+.center { text-align: center; }
+.list { padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--text-2); }
+.history .list { margin-top: 8px; }
+.foot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 </style>

@@ -5,7 +5,9 @@ import { config } from '../config'
 import { nativeBalance, waitForSuccess, withdrawCalldata, type LockRecord } from '../lib/chain'
 import { friendlyError, type FriendlyError } from '../lib/errors'
 import { formatUsdt } from '../lib/format'
+import { ChevronLeft } from 'lucide-vue-next'
 import { lockStatus, lockTitle } from '../lib/lockView'
+import Postmark from './Postmark.vue'
 import { sendTransaction } from '../lib/wallet'
 
 const props = defineProps<{ owner: Address; locks: LockRecord[]; now: number }>()
@@ -43,42 +45,44 @@ async function rescue(l: LockRecord) {
 </script>
 
 <template>
-  <section class="stack-lg fade-in" aria-labelledby="rescue-title">
-    <button class="btn ghost back" @click="emit('back')">Back</button>
-    <div class="stack">
-      <h2 id="rescue-title">Withdraw directly</h2>
-      <p class="muted">
-        Use this if Sevu's relayer is ever down. Your wallet talks to the contract itself, so it works even if Sevu disappears.
-        You pay a small Polygon network fee in POL.
-      </p>
+  <section class="section enter" aria-labelledby="rescue-title">
+    <button class="link plain back" @click="emit('back')"><ChevronLeft :size="18" :stroke-width="1.5" />Back</button>
+    <div class="group">
+      <h2 id="rescue-title" class="page-title">Withdraw directly</h2>
+      <p class="secondary">Use this if Sevu's relayer is ever down. Your wallet talks to the contract itself, so it works even if Sevu disappears. You pay a small Polygon network fee in POL.</p>
     </div>
 
-    <p v-if="pol === 0n" class="notice warn">Your wallet has no POL for the network fee. Add a little POL on Polygon first.</p>
+    <p v-if="pol === 0n" class="notice plain">Your wallet has no POL for the network fee. Add a little POL on Polygon first.</p>
 
-    <p v-if="!ripe.length" class="card muted">
+    <p v-if="!ripe.length" class="notice plain">
       No locks are ready yet.<template v-if="sealedCount">&#32;{{ sealedCount === 1 ? '1 lock is' : `${sealedCount} locks are` }} still sealed and can only be withdrawn after the unlock date.</template>
     </p>
 
-    <div v-for="l in ripe" :key="l.id.toString()" class="card row">
-      <div class="stack tight">
-        <span class="title">{{ lockTitle(l) }}</span>
-        <span class="num muted small">{{ formatUsdt(l.amount) }} USDT</span>
+    <div v-if="ripe.length" class="list card">
+      <div v-for="l in ripe" :key="l.id.toString()" class="rescue-row">
+        <Postmark :date="l.unlockAt" tone="ready" :size="44" :ring="false" />
+        <div class="body">
+          <span class="title">{{ lockTitle(l) }}</span>
+          <span class="meta">{{ formatUsdt(l.amount) }} USDT</span>
+        </div>
+        <button class="btn narrow" :disabled="busyId !== null || pol === 0n" @click="rescue(l)">
+          {{ busyId === l.id ? 'Withdrawing' : 'Withdraw' }}
+        </button>
       </div>
-      <button class="btn ripe narrow" :disabled="busyId !== null || pol === 0n" @click="rescue(l)">
-        {{ busyId === l.id ? 'Withdrawing...' : 'Withdraw' }}
-      </button>
     </div>
 
-    <p v-for="(hash, id) in sent" :key="id" class="small">
-      <a :href="`https://polygonscan.com/tx/${hash}`" target="_blank" rel="noopener">Lock #{{ id }} transaction</a>
-    </p>
-    <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong> {{ error.action }}</p>
+    <div v-if="Object.keys(sent).length" class="stack">
+      <a v-for="(hash, id) in sent" :key="id" class="link" :href="`https://polygonscan.com/tx/${hash}`" target="_blank" rel="noopener">Lock #{{ id }} transaction</a>
+    </div>
+    <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
   </section>
 </template>
 
 <style scoped>
 .back { align-self: flex-start; }
-.tight { gap: 2px; }
-.title { font-weight: 650; }
-.narrow { width: auto; min-width: 120px; }
+.list { padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.rescue-row { display: flex; align-items: center; gap: 12px; padding: 12px; }
+.body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.narrow { width: auto; min-height: 40px; padding: 0 16px; }
 </style>

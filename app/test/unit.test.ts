@@ -33,10 +33,16 @@ describe('amount parsing', () => {
 describe('error messages', () => {
   it('maps relayer codes to plain language', () => {
     expect(friendlyError(new RelayerError('STILL_LOCKED', 'x')).title).toBeTruthy()
-    expect(friendlyError(new RelayerError('RATE_LIMITED', 'x')).title).toBe('Daily limit reached.')
+    expect(friendlyError(new RelayerError('RATE_LIMITED', 'x')).title).toBe('Daily limit reached')
   })
   it('treats wallet rejection as a quiet cancel', () => {
     expect(friendlyError({ code: 4001, message: 'User rejected' }).cancelled).toBe(true)
+  })
+  it('short titles have no trailing period', () => {
+    for (const code of ['AMOUNT_OUT_OF_RANGE', 'NONCE_MISMATCH', 'RELAYER_UNREACHABLE', 'NOPE']) {
+      expect(friendlyError(new RelayerError(code, 'x')).title.endsWith('.')).toBe(false)
+    }
+    expect(friendlyError({ code: 4001 }).title.endsWith('.')).toBe(false)
   })
   it('never contains em dashes', () => {
     const src = readFileSync(fileURLToPath(new URL('../src/lib/errors.ts', import.meta.url)), 'utf8')

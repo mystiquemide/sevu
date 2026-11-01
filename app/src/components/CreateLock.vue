@@ -6,7 +6,8 @@ import { formatDate, formatUsdt, parseUsdt } from '../lib/format'
 import { friendlyError, type FriendlyError } from '../lib/errors'
 import { cleanLabel, MAX_LABEL, saveLockMeta } from '../lib/labels'
 import { createLock, type FlowStep } from '../lib/lockFlow'
-import SealAnimation from './SealAnimation.vue'
+import { Check, LoaderCircle } from 'lucide-vue-next'
+import Envelope from './Envelope.vue'
 
 const props = defineProps<{ owner: Address; balance: bigint; now: number }>()
 const emit = defineEmits<{ done: []; cancel: [] }>()
@@ -84,7 +85,7 @@ async function seal() {
   if (amount.value === null || unlockAt.value === null) return
   // The review may have sat open; re-check the minimum lead time against now.
   if (unlockAt.value < props.now + MIN_LEAD_SEC) {
-    error.value = { title: 'That unlock time is now too close.', action: 'Go back and pick a later time.' }
+    error.value = { title: 'That unlock time is now too close', action: 'Go back and pick a later time.' }
     return
   }
   stage.value = 'signing'
@@ -110,96 +111,99 @@ function pickAmount(units: bigint) {
 </script>
 
 <template>
-  <section class="stack-lg fade-in" aria-labelledby="create-title">
+  <section class="section enter" aria-labelledby="create-title">
     <!-- Result -->
     <template v-if="stage === 'result'">
-      <template v-if="outcome === 'SEALED'">
-        <SealAnimation />
-        <div class="center stack">
-          <h2 id="create-title">Sealed</h2>
-          <p class="big num">{{ amount !== null ? formatUsdt(amount) : '' }} USDT</p>
-          <p class="muted">Locked until {{ unlockAt !== null ? formatDate(unlockAt) : '' }}.<br />Nobody can move it before then. Not even Sevu.</p>
+      <template v-if="outcome === 'SEALED' && amount !== null && unlockAt !== null">
+        <div class="group">
+          <h2 id="create-title" class="page-title">Sealed</h2>
+          <p class="secondary">Nobody can move this before the date on the stamp. Not you, not Sevu.</p>
         </div>
+        <Envelope :amount="amount" :unlock-at="unlockAt" :title="cleanLabel(label) || 'New lock'" :now="now" :progress="0" press />
       </template>
       <template v-else>
-        <h2 id="create-title">{{ outcome === 'FAILED' ? 'Nothing was locked' : 'Still confirming' }}</h2>
-        <p class="notice" :class="outcome === 'FAILED' ? 'error' : 'warn'" role="status">
+        <h2 id="create-title" class="page-title">{{ outcome === 'FAILED' ? 'Nothing was locked' : 'Still confirming' }}</h2>
+        <p class="notice" :class="outcome === 'FAILED' ? 'error' : 'plain'" role="status">
           {{ outcome === 'FAILED'
             ? 'The transaction failed and your USDT did not move. You can try again.'
             : 'We could not confirm the lock yet. Check your locks before trying again so you do not lock twice.' }}
         </p>
       </template>
-      <a v-if="txHash" class="small muted center" :href="`https://polygonscan.com/tx/${txHash}`" target="_blank" rel="noopener">View transaction</a>
-      <button class="btn" @click="emit('done')">Back to my savings</button>
+      <div class="group">
+        <button class="btn ink" @click="emit('done')">Back to my savings</button>
+        <a v-if="txHash" class="link center" :href="`https://polygonscan.com/tx/${txHash}`" target="_blank" rel="noopener">View transaction</a>
+      </div>
     </template>
 
     <!-- Signing -->
     <template v-else-if="stage === 'signing'">
-      <h2 id="create-title">Sealing your savings</h2>
-      <ol class="card steps" aria-live="polite">
+      <h2 id="create-title" class="page-title">Sealing</h2>
+      <Envelope v-if="amount !== null && unlockAt !== null" :amount="amount" :unlock-at="unlockAt" :title="cleanLabel(label) || 'New lock'" :now="now" :stamped="false" />
+      <ol class="steps" aria-live="polite">
         <li v-for="(s, i) in signSteps" :key="s.key" :class="{ active: step === s.key, done: s.done }">
-          <span class="dot" aria-hidden="true">{{ s.done ? '' : i + 1 }}</span>
+          <span class="marker" aria-hidden="true">
+            <Check v-if="s.done" :size="16" :stroke-width="1.5" />
+            <LoaderCircle v-else-if="step === s.key" class="spin" :size="16" :stroke-width="1.5" />
+            <template v-else>{{ i + 1 }}</template>
+          </span>
           <span>{{ s.text }}</span>
           <span class="visually-hidden">{{ s.done ? 'done' : step === s.key ? 'in progress' : 'waiting' }}</span>
         </li>
       </ol>
-      <p class="muted small">Confirm each request in Nimiq Pay. You pay no gas.</p>
+      <p class="secondary small">Confirm each request in Nimiq Pay. There is no network fee.</p>
     </template>
 
     <!-- Review -->
     <template v-else-if="stage === 'review'">
-      <h2 id="create-title">Review</h2>
-      <dl class="card facts">
-        <div class="row"><dt class="muted">Amount</dt><dd class="num">{{ amount !== null ? formatUsdt(amount) : '' }} USDT</dd></div>
-        <div class="row"><dt class="muted">Opens</dt><dd class="num">{{ unlockAt !== null ? formatDate(unlockAt) : '' }}</dd></div>
-        <div v-if="cleanLabel(label)" class="row"><dt class="muted">Name</dt><dd>{{ cleanLabel(label) }}</dd></div>
-        <div class="row"><dt class="muted">Network fee</dt><dd>Free</dd></div>
-      </dl>
-      <p class="notice warn">Once sealed, this money cannot be withdrawn before the unlock date. Not by you, not by Sevu, not by anyone.</p>
-      <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong> {{ error.action }}</p>
-      <button class="btn" @click="seal">Seal it</button>
-      <button class="btn secondary" @click="editAgain">Change something</button>
+      <h2 id="create-title" class="page-title">Review</h2>
+      <Envelope v-if="amount !== null && unlockAt !== null" :amount="amount" :unlock-at="unlockAt" :title="cleanLabel(label) || 'New lock'" :now="now" :stamped="false" />
+      <p class="notice plain">Once sealed, this money cannot be withdrawn before the unlock date. Not by you, not by Sevu, not by anyone.</p>
+      <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
+      <div class="group">
+        <button class="btn" @click="seal">Seal it</button>
+        <button class="btn secondary" @click="editAgain">Change something</button>
+      </div>
     </template>
 
     <!-- Form -->
-    <form v-else class="stack-lg" @submit.prevent="review">
+    <form v-else class="section" @submit.prevent="review">
       <div class="row">
-        <h2 id="create-title">New lock</h2>
-        <button type="button" class="btn ghost" @click="emit('cancel')">Cancel</button>
+        <h2 id="create-title" class="page-title">New lock</h2>
+        <button type="button" class="link" @click="emit('cancel')">Cancel</button>
       </div>
 
-      <p v-if="noFunds" class="notice warn">You need at least 1 USDT on Polygon in Nimiq Pay to create a lock.</p>
+      <p v-if="noFunds" class="notice plain">You need at least 1 USDT on Polygon in Nimiq Pay to create a lock.</p>
 
-      <div class="card stack">
+      <div class="group">
         <label for="amount">How much?</label>
         <div class="amount-row">
           <input id="amount" v-model="amountText" class="amount-input num" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-describedby="amount-help" />
-          <span class="unit muted">USDT</span>
+          <span class="secondary">USDT</span>
         </div>
-        <div class="chips">
-          <button v-for="c in amountChips" :key="c.toString()" type="button" class="chip" :disabled="c > balance"
+        <div class="choices four">
+          <button v-for="c in amountChips" :key="c.toString()" type="button" class="choice" :disabled="c > balance"
             :aria-pressed="amount === c" @click="pickAmount(c)">{{ formatUsdt(c).replace('.00', '') }}</button>
-          <button type="button" class="chip" :disabled="maxAmount < MIN_AMOUNT" @click="pickAmount(maxAmount)">Max</button>
+          <button type="button" class="choice" :disabled="maxAmount < MIN_AMOUNT" @click="pickAmount(maxAmount)">Max</button>
         </div>
-        <p id="amount-help" class="faint small num">Available {{ formatUsdt(balance) }} USDT · up to {{ formatUsdt(MAX_AMOUNT).replace('.00', '') }} per lock</p>
+        <p id="amount-help" class="meta">{{ formatUsdt(balance) }} USDT available · up to {{ formatUsdt(MAX_AMOUNT).replace('.00', '') }} per lock</p>
         <p v-if="amountProblem" class="problem" role="alert">{{ amountProblem }}</p>
       </div>
 
-      <div class="card stack">
+      <div class="group">
         <span class="label" id="duration-label">Lock it for</span>
-        <div class="chips" role="group" aria-labelledby="duration-label">
-          <button v-for="d in durations" :key="d.sec" type="button" class="chip" :aria-pressed="duration === d.sec" @click="duration = d.sec">{{ d.label }}</button>
-          <button type="button" class="chip" :aria-pressed="duration === 'custom'" @click="duration = 'custom'">Pick a date</button>
+        <div class="choices" role="group" aria-labelledby="duration-label">
+          <button v-for="d in durations" :key="d.sec" type="button" class="choice" :aria-pressed="duration === d.sec" @click="duration = d.sec">{{ d.label }}</button>
+          <button type="button" class="choice" :aria-pressed="duration === 'custom'" @click="duration = 'custom'">Pick a date</button>
         </div>
         <input v-if="duration === 'custom'" v-model="customDate" type="datetime-local" aria-label="Unlock date and time" />
-        <p v-if="unlockAt !== null && !dateProblem" class="faint small">Opens {{ formatDate(unlockAt) }}</p>
+        <p v-if="unlockAt !== null && !dateProblem" class="meta">Opens {{ formatDate(unlockAt) }}</p>
         <p v-else-if="dateProblem" class="problem" role="alert">{{ dateProblem }}</p>
       </div>
 
-      <div class="card stack">
-        <label for="label">Name it <span class="faint">(optional)</span></label>
-        <input id="label" v-model="label" :maxlength="MAX_LABEL" placeholder="e.g. Rent, New phone" autocomplete="off" />
-        <p class="faint small">Only saved on this phone.</p>
+      <div class="group">
+        <label for="label">Name it (optional)</label>
+        <input id="label" v-model="label" :maxlength="MAX_LABEL" placeholder="Rent, new phone, a trip" autocomplete="off" />
+        <p class="meta">Only saved on this phone</p>
       </div>
 
       <button class="btn" type="submit" :disabled="!canReview">Review</button>
@@ -208,21 +212,17 @@ function pickAmount(units: bigint) {
 </template>
 
 <style scoped>
-.center { text-align: center; align-items: center; }
-.big { font-size: 34px; font-weight: 750; letter-spacing: -0.03em; }
-.amount-row { display: flex; align-items: baseline; gap: 8px; border-bottom: 2px solid var(--line); }
-.amount-row:focus-within { border-color: var(--ink); }
-.unit { font-weight: 650; }
-.problem { color: var(--danger); font-size: 14px; }
-.facts { margin: 0; display: flex; flex-direction: column; gap: 12px; }
-dd { margin: 0; font-weight: 650; text-align: right; }
-.steps { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 16px; }
-.steps li { display: flex; align-items: center; gap: 12px; color: var(--ink-faint); font-weight: 600; }
-.steps li.active { color: var(--ink); }
-.steps li.done { color: var(--sealed); }
-.dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; border: 2px solid currentColor; flex: none; }
-.active .dot { animation: breathe 1.2s ease-in-out infinite; }
-.done .dot { background: var(--sealed); border-color: var(--sealed); }
-.done .dot::after { content: ''; width: 10px; height: 6px; border: solid #fff; border-width: 0 0 2.5px 2.5px; transform: rotate(-45deg) translate(1px, -1px); }
-@keyframes breathe { 50% { transform: scale(1.12); } }
+.center { align-self: center; }
+.amount-row { display: flex; align-items: baseline; gap: 8px; border-bottom: 1px solid var(--line-strong); transition: border-color 150ms var(--ease); }
+.amount-row:focus-within { border-color: var(--text); }
+.amount-input { font-size: 40px; line-height: 48px; min-height: 56px; letter-spacing: -0.02em; border: 0; padding: 0; background: transparent; }
+.problem { color: var(--danger); font-size: 13px; line-height: 20px; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; align-items: center; gap: 12px; color: var(--text-3); min-height: 32px; }
+.steps li.active { color: var(--text); }
+.steps li.done { color: var(--text-2); }
+.marker { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-size: 12px; box-shadow: inset 0 0 0 1px var(--line-strong); flex: none; }
+.done .marker { color: var(--ready); box-shadow: inset 0 0 0 1px var(--ready); }
+.spin { animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
