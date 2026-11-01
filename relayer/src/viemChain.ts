@@ -14,7 +14,7 @@ import {
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { polygon } from 'viem/chains'
-import { sevuLockAbi, usdt0Abi } from './abi.js'
+import { getLockV0Abi, sevuLockAbi, usdt0Abi } from './abi.js'
 import { ChainUnavailableError, SimulationError, type ChainPort, type DepositCall, type SentTx } from './chain.js'
 
 export interface ViemChainOptions {
@@ -25,6 +25,8 @@ export interface ViemChainOptions {
   timeoutMs?: number
   /** Override for local forks. */
   chain?: Chain
+  /** 'v0' reads the candidate contract's Lock layout, which has no lockedAt. */
+  format?: 'v1' | 'v0'
 }
 
 const GAS_HEADROOM_PCT = 120n
@@ -121,7 +123,10 @@ export function createViemChain(opts: ViemChainOptions): ChainPort {
       guard(async () => {
         const count = await pub.readContract({ ...lock, functionName: 'lockCount' })
         if (id >= count) return null
-        const l = await pub.readContract({ ...lock, functionName: 'getLock', args: [id] })
+        const l =
+          opts.format === 'v0'
+            ? await pub.readContract({ address: opts.lockAddress, abi: getLockV0Abi, functionName: 'getLock', args: [id] })
+            : await pub.readContract({ ...lock, functionName: 'getLock', args: [id] })
         return { owner: l.owner, amount: l.amount, unlockAt: l.unlockAt, withdrawn: l.withdrawn }
       }),
     simulateDeposit: (c) => guard(() => simulate(depositData(c))),

@@ -1,7 +1,8 @@
 import { parseSignature, type Address, type Hash } from 'viem'
 import { config, SIGNATURE_TTL_SEC, USDT0 } from '../config'
-import { chainTime, lockNonce, locksOf, receiptTime, tokenNonce, waitForSuccess } from './chain'
-import { relayDeposit } from './relayer'
+import { chainTime, currentLocksOf, lockNonce, receiptTime, tokenNonce, waitForSuccess, type LockRecord } from './chain'
+import { clearPendingAttempt, savePendingAttempt } from './attempts'
+import { RelayerError, relayDeposit } from './relayer'
 import { lockIntentDomain, lockIntentTypes, permitTypes, usdt0Domain } from './typedData'
 import { signTypedData } from './wallet'
 
@@ -10,7 +11,7 @@ export type FlowStep = 'SIGNING_PERMIT' | 'SIGNING_INTENT' | 'SUBMITTED' | 'SEAL
 export interface FlowResult {
   step: 'SEALED' | 'FAILED' | 'UNKNOWN'
   txHash: Hash
-  lockId?: bigint
+  lock?: LockRecord
   sealedAt?: number
 }
 
@@ -52,11 +53,12 @@ export async function createLock(
   amount: bigint,
   unlockAt: bigint,
   onStep: (s: FlowStep) => void,
+  label = '',
 ): Promise<FlowResult> {
   const lock = config.lockAddress
   if (!lock) throw new Error('NOT_CONFIGURED')
   const [now, intentNonce, permitNonce, before] = await Promise.all([
-    chainTime(), lockNonce(owner), tokenNonce(owner), locksOf(owner),
+    chainTime(), lockNonce(owner), tokenNonce(owner), currentLocksOf(owner),
   ])
   const deadline = now + BigInt(SIGNATURE_TTL_SEC)
 
@@ -65,20 +67,32 @@ export async function createLock(
   onStep('SIGNING_INTENT')
   const intentSig = await signTypedData(owner, buildIntent(lock, owner, amount, unlockAt, intentNonce, deadline))
 
+  // From here the signed intent can land on chain; remember its terms until it can no longer (audit L-1).
+  savePendingAttempt(owner, {
+    nonce: intentNonce.toString(), amount: amount.toString(), unlockAt: unlockAt.toString(), label, deadline: Number(deadline),
+  })
   const { v, r, s, yParity } = parseSignature(permitSig)
-  const txHash = await relayDeposit({
+  let txHash: Hash
+  try {
+    txHash = await relayDeposit({
     intent: { owner, amount, unlockAt, nonce: intentNonce, deadline },
     intentSig,
     permit: { value: amount, deadline, v: Number(v ?? BigInt(yParity + 27)), r, s },
   })
+  } catch (e) {
+    // A clear refusal means the relayer never sent it, so nothing signed can land on chain.
+    if (e instanceof RelayerError && !['RELAYER_UNREACHABLE', 'CHAIN_UNAVAILABLE'].includes(e.code)) clearPendingAttempt(owner)
+    throw e
+  }
   onStep('SUBMITTED')
 
   const status = await waitForSuccess(txHash)
   if (status === 'reverted') return { step: 'FAILED', txHash }
-  const after = await locksOf(owner).catch(() => null)
-  const known = new Set(before.map((l) => l.id))
-  const created = after?.find((l) => !known.has(l.id) && l.unlockAt === unlockAt && l.amount === amount)
+  const after = await currentLocksOf(owner).catch(() => null)
+  const known = new Set(before.map((l) => l.key))
+  const created = after?.find((l) => !known.has(l.key) && l.unlockAt === unlockAt && l.amount === amount)
   if (!created) return { step: 'UNKNOWN', txHash }
-  const t = await receiptTime(txHash)
-  return { step: 'SEALED', txHash, lockId: created.id, sealedAt: t === null ? undefined : Number(t) }
+  clearPendingAttempt(owner)
+  const t = created.lockedAt ?? (await receiptTime(txHash).then((x) => (x === null ? null : Number(x))))
+  return { step: 'SEALED', txHash, lock: created, sealedAt: t ?? undefined }
 }

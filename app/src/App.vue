@@ -24,7 +24,7 @@ const loaded = ref(false)
 const error = ref<FriendlyError | null>(null)
 const refreshing = ref(false)
 const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
-const selectedId = ref<bigint | null>(null)
+const selectedKey = ref<string | null>(null)
 const metaVersion = ref(0)
 const wrongChain = ref(false)
 const showAccount = ref(false)
@@ -50,7 +50,7 @@ const others = computed(() => active.value.slice(1))
 const history = computed(() => locks.value.filter((l) => l.withdrawn))
 const totalLocked = computed(() => active.value.reduce((sum, l) => sum + l.amount, 0n))
 const readyCount = computed(() => active.value.filter((l) => lockStatus(l, now.value) === 'ripe').length)
-const selected = computed(() => locks.value.find((l) => l.id === selectedId.value) ?? null)
+const selected = computed(() => locks.value.find((l) => l.key === selectedKey.value) ?? null)
 
 function featuredLabel(l: LockRecord) {
   return `${lockTitle(l)}: ${formatUsdt(l.amount)} USDT, ${statusLabel[lockStatus(l, now.value)]}`
@@ -93,7 +93,7 @@ function go(v: View) {
 }
 
 function open(l: LockRecord) {
-  selectedId.value = l.id
+  selectedKey.value = l.key
   go('detail')
 }
 
@@ -128,7 +128,7 @@ async function onWallet(w: WalletSnapshot) {
     locks.value = []
     balance.value = 0n
     loaded.value = false
-    selectedId.value = null
+    selectedKey.value = null
     showAccount.value = false
     if (view.value !== 'rescue') go('home')
   }
@@ -222,7 +222,7 @@ onUnmounted(() => {
 
     <CreateLock v-else-if="view === 'create' && owner" :owner="owner" :balance="balance" :now="now" @done="afterCreate" @cancel="go('home')" />
 
-    <LockDetail v-else-if="view === 'detail' && owner && selected" :key="selected.id.toString()" :lock="selected" :owner="owner" :now="now"
+    <LockDetail v-else-if="view === 'detail' && owner && selected" :key="selected.key" :lock="selected" :owner="owner" :now="now"
       @back="go('home')" @changed="changed" @rescue="go('rescue')" />
 
     <Rescue v-else-if="view === 'rescue' && owner" :owner="owner" :locks="locks" :now="now" @back="go('home')" @changed="changed" />
@@ -252,11 +252,11 @@ onUnmounted(() => {
             <p class="secondary small center">Nothing sealed yet. Pick an amount and a date. Two signatures, no network fee.</p>
           </div>
           <button v-else class="featured" type="button" :aria-label="featuredLabel(featured)" @click="open(featured)">
-            <Envelope :key="`${featured.id}-${metaVersion}`" :amount="featured.amount" :unlock-at="featured.unlockAt" :title="lockTitle(featured)"
+            <Envelope :key="`${featured.key}-${metaVersion}`" :amount="featured.amount" :unlock-at="featured.unlockAt" :title="lockTitle(featured)"
               :status="lockStatus(featured, now)" :now="now" :progress="lockProgress(featured, now)" />
           </button>
           <div v-if="others.length" class="list card">
-            <LockRow v-for="l in others" :key="l.id.toString()" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
+            <LockRow v-for="l in others" :key="l.key" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
           </div>
         </template>
         <div v-else class="skeleton" style="height: 232px" />
@@ -265,7 +265,7 @@ onUnmounted(() => {
       <details v-if="history.length" class="history">
         <summary>History ({{ history.length }})</summary>
         <div class="list card">
-          <LockRow v-for="l in history" :key="l.id.toString()" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
+          <LockRow v-for="l in history" :key="l.key" :lock="l" :now="now" :version="metaVersion" @open="open(l)" />
         </div>
       </details>
 

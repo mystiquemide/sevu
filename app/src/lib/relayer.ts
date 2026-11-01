@@ -1,4 +1,4 @@
-import type { Hash } from 'viem'
+import type { Address, Hash } from 'viem'
 import { config } from '../config'
 
 export class RelayerError extends Error {
@@ -31,4 +31,4 @@ async function post(path: string, body: unknown): Promise<Hash> {
 }
 
 export const relayDeposit = (body: unknown) => post('/v1/deposits', body)
-export const relayWithdrawal = (lockId: bigint) => post('/v1/withdrawals', { lockId })
+export const relayWithdrawal = (lockId: bigint, contract: Address) => post('/v1/withdrawals', { lockId, contract })

@@ -28,7 +28,8 @@ export function formatRemaining(seconds: number): string {
   const d = Math.floor(seconds / 86_400)
   const h = Math.floor((seconds % 86_400) / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  if (d > 0) return h > 0 ? `${d} days ${h} h` : `${d} days`
+  const days = d === 1 ? "1 day" : `${d} days`
+  if (d > 0) return h > 0 ? `${days} ${h} h` : days
   if (h > 0) return `${h} h ${m} min`
   if (m > 0) return `${m} min`
   return `${seconds} s`

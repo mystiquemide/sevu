@@ -1,4 +1,3 @@
-import { config } from '../config'
 
 /** Lock labels and seal times live only on this device. The contract stays the source of truth for money. */
 interface LocalLockMeta {
@@ -7,25 +6,28 @@ interface LocalLockMeta {
   sealedAt?: number
 }
 
-const KEY = () => `sevu:locks:${config.lockAddress ?? 'none'}`
+/** Keyed per deployment, so lock #0 on one contract never borrows the name of lock #0 on another. */
+const KEY = (contract: string) => `sevu:locks:${contract}`
 
-function readAll(): Record<string, LocalLockMeta> {
+interface LockRef { contract: string; id: bigint }
+
+function readAll(contract: string): Record<string, LocalLockMeta> {
   try {
-    return JSON.parse(localStorage.getItem(KEY()) ?? '{}') as Record<string, LocalLockMeta>
+    return JSON.parse(localStorage.getItem(KEY(contract)) ?? '{}') as Record<string, LocalLockMeta>
   } catch {
     return {}
   }
 }
 
-export function lockMeta(id: bigint): LocalLockMeta {
-  return readAll()[id.toString()] ?? {}
+export function lockMeta(ref: LockRef): LocalLockMeta {
+  return readAll(ref.contract)[ref.id.toString()] ?? {}
 }
 
-export function saveLockMeta(id: bigint, patch: LocalLockMeta) {
-  const all = readAll()
-  all[id.toString()] = { ...all[id.toString()], ...patch }
+export function saveLockMeta(ref: LockRef, patch: LocalLockMeta) {
+  const all = readAll(ref.contract)
+  all[ref.id.toString()] = { ...all[ref.id.toString()], ...patch }
   try {
-    localStorage.setItem(KEY(), JSON.stringify(all))
+    localStorage.setItem(KEY(ref.contract), JSON.stringify(all))
   } catch {
     // Storage full or blocked: labels are optional, so ignore.
   }

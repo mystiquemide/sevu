@@ -25,6 +25,7 @@ const USDT0 = '0xc2132D05D31c914a87C6611C10748AEb04B58e8F' as Address
 // anvil default account 0, a well-known test key with no value on mainnet.
 const RELAYER_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' as Hex
 const artifact = fileURLToPath(new URL('../../contracts/out/SevuLock.sol/SevuLock.json', import.meta.url))
+const artifactV0 = fileURLToPath(new URL('../../contracts/out/SevuLockV0.sol/SevuLockV0.json', import.meta.url))
 const ready = Boolean(RPC) && existsSync(artifact)
 
 const chain = { ...polygon, rpcUrls: { default: { http: [ANVIL] } } }
@@ -35,6 +36,7 @@ const owner = privateKeyToAccount(generatePrivateKey())
 
 let anvil: ChildProcess | undefined
 let lock: Address
+let legacyLock: Address
 let app: ReturnType<typeof createApp>
 
 async function waitForAnvil() {
@@ -91,11 +93,21 @@ describe.skipIf(!ready)('relayer against SevuLock on a Polygon fork', () => {
       args: [USDT0],
     })
     lock = (await pub.waitForTransactionReceipt({ hash })).contractAddress!
+    const v0 = JSON.parse(readFileSync(artifactV0, 'utf8')) as { bytecode: { object: Hex } }
+    const h0 = await deployer.deployContract({
+      abi: [{ type: 'constructor', inputs: [{ name: 'token_', type: 'address' }], stateMutability: 'nonpayable' }],
+      bytecode: v0.bytecode.object,
+      args: [USDT0],
+    })
+    legacyLock = (await pub.waitForTransactionReceipt({ hash: h0 })).contractAddress!
     await dealUsdt0(owner.address, 50_000_000n)
 
     const service = new RelayerService(
       createViemChain({ rpcUrls: [ANVIL], privateKey: RELAYER_KEY, lockAddress: lock, tokenAddress: USDT0, chain }),
       { ...defaultConfig, maxLockAmount: 10_000_000n, dailyGasBudgetWei: 10n ** 20n, lowBalanceWei: 10n ** 18n },
+      () => {},
+      Date.now,
+      [createViemChain({ rpcUrls: [ANVIL], privateKey: RELAYER_KEY, lockAddress: legacyLock, tokenAddress: USDT0, chain, format: 'v0' })],
     )
     app = createApp(service, { allowedOrigins: [] })
   }, 60_000)
@@ -160,6 +172,36 @@ describe.skipIf(!ready)('relayer against SevuLock on a Polygon fork', () => {
     const id = (await pub.readContract({ address: lock, abi: sevuLockAbi, functionName: 'lockCount' })) - 1n
     await expect(adapter.simulateWithdraw(id)).rejects.toMatchObject({ reason: 'StillLocked' })
     await expect(adapter.simulateWithdraw(999n)).rejects.toMatchObject({ reason: 'NoLock' })
+  }, 60_000)
+
+  it('reads lockedAt from the final contract', async () => {
+    const now = (await pub.getBlock()).timestamp
+    const dep = await post('/v1/deposits', await signedDeposit(2_000_000n, now + 86_400n))
+    expect(dep.status, JSON.stringify(dep.json)).toBe(200)
+    const r = await pub.waitForTransactionReceipt({ hash: dep.json.txHash })
+    const block = await pub.getBlock({ blockNumber: r.blockNumber })
+    const id = (await pub.readContract({ address: lock, abi: sevuLockAbi, functionName: 'lockCount' })) - 1n
+    const l = await pub.readContract({ address: lock, abi: sevuLockAbi, functionName: 'getLock', args: [id] })
+    expect(l.lockedAt).toBe(Number(block.timestamp))
+  }, 60_000)
+
+  it('withdraws a lock from the earlier contract through the relayer', async () => {
+    const ownerWallet = createWalletClient({ chain, transport: http(ANVIL), account: owner })
+    await test.setBalance({ address: owner.address, value: 10n ** 18n })
+    const approveAbi = [{ type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const
+    const depositAbi = [{ type: 'function', name: 'deposit', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint64' }], outputs: [{ type: 'uint256' }] }] as const
+    const now = (await pub.getBlock()).timestamp
+    await pub.waitForTransactionReceipt({ hash: await ownerWallet.writeContract({ address: USDT0, abi: approveAbi, functionName: 'approve', args: [legacyLock, 1_000_000n] }) })
+    await pub.waitForTransactionReceipt({ hash: await ownerWallet.writeContract({ address: legacyLock, abi: depositAbi, functionName: 'deposit', args: [1_000_000n, now + 600n] }) })
+    const before = await pub.readContract({ address: USDT0, abi: usdt0Abi, functionName: 'balanceOf', args: [owner.address] })
+    const early = await post('/v1/withdrawals', { lockId: '0', contract: legacyLock })
+    expect(early.json.error.code).toBe('STILL_LOCKED')
+    await test.increaseTime({ seconds: 700 })
+    await test.mine({ blocks: 1 })
+    const w = await post('/v1/withdrawals', { lockId: '0', contract: legacyLock })
+    expect(w.status, JSON.stringify(w.json)).toBe(200)
+    expect((await pub.waitForTransactionReceipt({ hash: w.json.txHash })).status).toBe('success')
+    expect(await pub.readContract({ address: USDT0, abi: usdt0Abi, functionName: 'balanceOf', args: [owner.address] })).toBe(before + 1_000_000n)
   }, 60_000)
 
   it('reports health from the real chain', async () => {

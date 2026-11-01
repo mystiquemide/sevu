@@ -48,6 +48,13 @@ try {
     bytecode: bytecode.object, args: [USDT0],
   })
   const lock = (await pub.waitForTransactionReceipt({ hash })).contractAddress
+  // The candidate contract's exact source, as the earlier deployment that still holds lock #0 on mainnet
+  const v0 = JSON.parse(readFileSync(`${root}/contracts/out/SevuLockV0.sol/SevuLockV0.json`, 'utf8'))
+  const h0 = await deployer.deployContract({
+    abi: [{ type: 'constructor', inputs: [{ type: 'address' }], stateMutability: 'nonpayable' }],
+    bytecode: v0.bytecode.object, args: [USDT0],
+  })
+  const legacyLock = (await pub.waitForTransactionReceipt({ hash: h0 })).contractAddress
 
   const ownerKey = generatePrivateKey()
   const owner = privateKeyToAccount(ownerKey)
@@ -58,17 +65,26 @@ try {
     if ((await bal(owner.address)) === 20_000_000n) break
     await testClient.setStorageAt({ address: USDT0, index: key, value: pad('0x0') })
   }
-  check('owner funded with 20 USDT0 and 0 POL', (await bal(owner.address)) === 20_000_000n && (await pub.getBalance({ address: owner.address })) === 0n)
+  // A 1 USDT lock on the earlier contract, made the old way, opening in 2 days
+  {
+    const ownerWallet = createWalletClient({ chain, transport: http(ANVIL), account: owner })
+    await testClient.setBalance({ address: owner.address, value: 10n ** 18n })
+    const t = (await pub.getBlock()).timestamp
+    await pub.waitForTransactionReceipt({ hash: await ownerWallet.writeContract({ address: USDT0, abi: [{ type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ type: 'address' }, { type: 'uint256' }], outputs: [{ type: 'bool' }] }], functionName: 'approve', args: [legacyLock, 1_000_000n] }) })
+    await pub.waitForTransactionReceipt({ hash: await ownerWallet.writeContract({ address: legacyLock, abi: [{ type: 'function', name: 'deposit', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }, { type: 'uint64' }], outputs: [{ type: 'uint256' }] }], functionName: 'deposit', args: [1_000_000n, t + 2n * 86_400n] }) })
+    await testClient.setBalance({ address: owner.address, value: 0n })
+  }
+  check('owner funded with 19 USDT0 (1 locked on the old contract) and 0 POL', (await bal(owner.address)) === 19_000_000n && (await pub.getBalance({ address: owner.address })) === 0n)
 
   start('npx', ['tsx', 'src/server.ts'], {
     cwd: `${root}/relayer`, stdio: 'ignore',
-    env: { ...process.env, RELAYER_PRIVATE_KEY: RELAYER_KEY, POLYGON_RPC_URLS: ANVIL, SEVU_LOCK_ADDRESS: lock, USDT0_ADDRESS: USDT0, ALLOWED_ORIGINS: APP, PORT: '8788' },
+    env: { ...process.env, RELAYER_PRIVATE_KEY: RELAYER_KEY, POLYGON_RPC_URLS: ANVIL, SEVU_LOCK_ADDRESS: lock, USDT0_ADDRESS: USDT0, ALLOWED_ORIGINS: APP, PORT: '8788', SEVU_LEGACY_LOCK_ADDRESSES: legacyLock },
   })
   await waitFor(async () => (await fetch(`${RELAYER}/v1/health`)).ok, 'relayer')
 
   execSync('npx vite build --logLevel error', {
     cwd: `${root}/app`, stdio: 'inherit',
-    env: { ...process.env, VITE_SEVU_LOCK_ADDRESS: lock, VITE_RELAYER_URL: RELAYER, VITE_POLYGON_RPC: ANVIL },
+    env: { ...process.env, VITE_SEVU_LOCK_ADDRESS: lock, VITE_SEVU_LEGACY_LOCKS: legacyLock, VITE_RELAYER_URL: RELAYER, VITE_POLYGON_RPC: ANVIL },
   })
   start('npx', ['vite', 'preview', '--port', '4179', '--strictPort', '--host', '127.0.0.1'], { cwd: `${root}/app`, stdio: 'ignore' })
   await waitFor(async () => (await fetch(APP)).ok, 'app')
@@ -151,8 +167,9 @@ try {
     const page = await walletPage()
     await page.goto(APP)
     await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
-    await page.getByText('Nothing sealed yet').waitFor({ timeout: 15000 })
-    await shot(page, '01-home-empty')
+    await page.getByRole('button', { name: /^Lock #0: 1\.00 USDT, Sealed/ }).waitFor({ timeout: 15000 })
+    check('lock on the earlier contract is listed', true)
+    await shot(page, '01-home-legacy')
 
     await page.getByRole('button', { name: 'Lock USDT' }).click()
     await page.getByLabel('How much?').fill('11')
@@ -179,7 +196,8 @@ try {
     await page.reload()
     await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ }).waitFor({ timeout: 15000 })
     const total = await page.locator('.total').innerText()
-    check('after reload: lock and label persist, total 5.00 from chain', total.startsWith('5.00'), total)
+    check('after reload: both locks listed, names kept apart, total 6.00 from chain', total.startsWith('6.00')
+      && await page.getByRole('button', { name: /^Lock #0: 1\.00 USDT/ }).isVisible(), total)
 
     await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ }).click()
     await page.getByRole('button', { name: 'Try to withdraw early' }).click()
@@ -191,17 +209,23 @@ try {
     await testClient.increaseTime({ seconds: 31 * 86_400 })
     await testClient.mine({ blocks: 1 })
     await page.getByRole('button', { name: 'Refresh' }).click()
-    await page.getByText('1 lock is ready to withdraw').waitFor({ timeout: 15000 })
+    await page.getByText('2 locks are ready to withdraw').waitFor({ timeout: 15000 })
     check('after unlock time the home shows ready', true)
     await shot(page, '07-ripe')
     await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Ready/ }).click()
     await page.getByRole('button', { name: 'Withdraw to my wallet' }).click()
     await page.getByText('Withdrawn. 5.00 USDT is back in your wallet.').waitFor({ timeout: 60000 })
-    check('withdraw via relayer returns funds (FR-013)', (await bal(owner.address)) === 20_000_000n && (await bal(lock)) === 0n)
+    check('withdraw via relayer returns funds (FR-013)', (await bal(owner.address)) === 19_000_000n && (await bal(lock)) === 0n)
     await shot(page, '08-withdrawn')
     await page.getByRole('button', { name: 'Back' }).click()
     await page.getByText('History (1)').waitFor({ timeout: 10000 })
     check('withdrawn lock moves to history', true)
+    await page.getByRole('button', { name: /^Lock #0: 1\.00 USDT, Ready/ }).click()
+    await page.getByRole('button', { name: 'Withdraw to my wallet' }).click()
+    await page.getByText('Withdrawn. 1.00 USDT is back in your wallet.').waitFor({ timeout: 60000 })
+    check('lock on the earlier contract withdraws through the relayer', (await bal(owner.address)) === 20_000_000n && (await bal(legacyLock)) === 0n)
+    await page.getByRole('button', { name: 'Back' }).click()
+    await page.getByText('History (2)').waitFor({ timeout: 10000 })
 
     // Rescue: relayer not used; owner pays POL.
     await createLock(page, '2', 'Rescue test')

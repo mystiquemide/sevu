@@ -206,6 +206,37 @@ describe('POST /v1/withdrawals', () => {
   })
 })
 
+describe('withdrawals from an earlier contract', () => {
+  const LEGACY = '0x2222222222222222222222222222222222222222' as Address
+  let legacy: FakeChain
+  beforeEach(() => {
+    legacy = new FakeChain()
+    legacy.lockAddress = LEGACY
+    legacy.locks = [{ owner: owner.address, amount: 1_000_000n, unlockAt: NOW - 1n, withdrawn: false }]
+    const service = new RelayerService(chain, { ...defaultConfig, maxLockAmount: 10_000_000n, dailyGasBudgetWei: 10n ** 18n, lowBalanceWei: 10n ** 18n }, () => {}, Date.now, [legacy])
+    app = createApp(service, { allowedOrigins: [] })
+  })
+
+  it('routes a withdrawal to the named legacy contract', async () => {
+    const res = await post('/v1/withdrawals', { lockId: '0', contract: LEGACY })
+    expect(res.status).toBe(200)
+    expect(legacy.sent).toEqual(['withdraw'])
+    expect(chain.sent).toEqual([])
+  })
+
+  it('refuses a contract it does not know', async () => {
+    const res = await post('/v1/withdrawals', { lockId: '0', contract: '0x3333333333333333333333333333333333333333' })
+    expect(await errorCode(res)).toBe('BAD_REQUEST')
+    expect(legacy.sent).toEqual([])
+  })
+
+  it('keeps the current contract as the default', async () => {
+    chain.locks = [{ owner: owner.address, amount: 1_000_000n, unlockAt: NOW - 1n, withdrawn: false }]
+    expect((await post('/v1/withdrawals', { lockId: '0' })).status).toBe(200)
+    expect(chain.sent).toEqual(['withdraw'])
+  })
+})
+
 describe('GET /v1/health', () => {
   it('reports status without secrets', async () => {
     const res = await app.request('/v1/health')

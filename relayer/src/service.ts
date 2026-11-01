@@ -1,4 +1,4 @@
-import { verifyTypedData, type Hash } from 'viem'
+import { verifyTypedData, type Address, type Hash } from 'viem'
 import { RelayError } from './errors.js'
 import type { ChainPort } from './chain.js'
 import { SimulationError } from './chain.js'
@@ -49,12 +49,17 @@ export class RelayerService {
   private readonly budget: GasBudget
   private readonly pending = new Map<string, number>()
 
+  /** Contracts this relayer withdraws from: the current one plus any earlier deployments. Deposits go to the current one only. */
+  private readonly withdrawChains: Map<string, ChainPort>
+
   constructor(
     private readonly chain: ChainPort,
     private readonly cfg: RelayerConfig,
     private readonly log: Logger = () => {},
     private readonly clock: () => number = Date.now,
+    legacy: ChainPort[] = [],
   ) {
+    this.withdrawChains = new Map([chain, ...legacy].map((c) => [c.lockAddress.toLowerCase(), c]))
     this.deposits = new RateLimiter(cfg.maxDepositsPerDay, undefined, clock)
     this.withdrawals = new RateLimiter(cfg.maxWithdrawalsPerDay, undefined, clock)
     this.budget = new GasBudget(cfg.dailyGasBudgetWei, clock)
@@ -135,28 +140,30 @@ export class RelayerService {
     }
   }
 
-  async withdraw(lockId: bigint): Promise<{ txHash: Hash }> {
-    const lock = await this.chain.getLock(lockId)
+  async withdraw(lockId: bigint, contract?: Address): Promise<{ txHash: Hash }> {
+    const chain = contract ? this.withdrawChains.get(contract.toLowerCase()) : this.chain
+    if (!chain) throw new RelayError('BAD_REQUEST', 'Unknown lock contract')
+    const lock = await chain.getLock(lockId)
     if (!lock) throw new RelayError('LOCK_NOT_FOUND', 'No lock with this id')
     if (lock.withdrawn) throw new RelayError('ALREADY_WITHDRAWN', 'This lock was already withdrawn')
-    const now = await this.chain.now()
+    const now = await chain.now()
     if (now < lock.unlockAt) {
       throw new RelayError('STILL_LOCKED', 'This lock is still sealed', { unlockAt: lock.unlockAt.toString() })
     }
 
-    const key = `withdraw:${lockId}`
+    const key = `withdraw:${chain.lockAddress}:${lockId}`
     this.claimPending(key)
     let sent = false
     try {
       if (!this.withdrawals.allowed(lock.owner)) throw new RelayError('RATE_LIMITED', 'Too many withdrawals today, use the rescue page')
       this.requireBudget()
-      await this.simulate(() => this.chain.simulateWithdraw(lockId))
-      const tx = await this.chain.sendWithdraw(lockId)
+      await this.simulate(() => chain.simulateWithdraw(lockId))
+      const tx = await chain.sendWithdraw(lockId)
       sent = true
       this.withdrawals.record(lock.owner)
       this.budget.record(tx.maxCostWei)
-      this.releaseOnReceipt(key, tx.hash)
-      this.log({ event: 'withdraw_sent', lockId: lockId.toString(), owner: lock.owner, txHash: tx.hash })
+      this.releaseOnReceipt(key, tx.hash, chain)
+      this.log({ event: 'withdraw_sent', lockId: lockId.toString(), contract: chain.lockAddress, owner: lock.owner, txHash: tx.hash })
       return { txHash: tx.hash }
     } finally {
       if (!sent) this.pending.delete(key)
@@ -180,8 +187,8 @@ export class RelayerService {
     this.pending.set(key, this.clock() + this.cfg.pendingTtlMs)
   }
 
-  private releaseOnReceipt(key: string, hash: Hash) {
-    this.chain.waitForReceipt(hash).then(
+  private releaseOnReceipt(key: string, hash: Hash, chain: ChainPort = this.chain) {
+    chain.waitForReceipt(hash).then(
       () => this.pending.delete(key),
       (err) => this.log({ event: 'receipt_unknown', txHash: hash, error: String(err) }),
     )

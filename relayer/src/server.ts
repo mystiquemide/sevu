@@ -28,6 +28,14 @@ const chain = createViemChain({
   tokenAddress: address('USDT0_ADDRESS'),
 })
 
+// Earlier deployments stay withdrawable through the relayer. Their Lock layout predates lockedAt.
+const legacy = (process.env.SEVU_LEGACY_LOCK_ADDRESSES ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean)
+  .map((a) => {
+    if (!isAddress(a)) throw new Error(`SEVU_LEGACY_LOCK_ADDRESSES has an invalid address: ${a}`)
+    return createViemChain({ rpcUrls, privateKey: key as Hex, lockAddress: getAddress(a), tokenAddress: address('USDT0_ADDRESS'), format: 'v0' })
+  })
+
 const service = new RelayerService(
   chain,
   {
@@ -37,6 +45,8 @@ const service = new RelayerService(
     lowBalanceWei: BigInt(process.env.LOW_BALANCE_WEI ?? '1000000000000000000'),
   },
   log,
+  Date.now,
+  legacy,
 )
 
 const app = createApp(service, {
@@ -45,4 +55,4 @@ const app = createApp(service, {
 })
 
 const port = Number(process.env.PORT ?? 8787)
-serve({ fetch: app.fetch, port }, () => log({ event: 'listening', port, rpcCount: rpcUrls.length }))
+serve({ fetch: app.fetch, port }, () => log({ event: 'listening', port, rpcCount: rpcUrls.length, legacyContracts: legacy.length }))

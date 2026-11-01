@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { Address, Hash } from 'viem'
 import { MAX_AMOUNT, MAX_DURATION_SEC, MIN_AMOUNT } from '../config'
 import { formatDate, formatUsdt, parseUsdt } from '../lib/format'
 import { friendlyError, type FriendlyError } from '../lib/errors'
 import { cleanLabel, MAX_LABEL, saveLockMeta } from '../lib/labels'
 import { createLock, type FlowStep } from '../lib/lockFlow'
+import { activeAttempt, type PendingAttempt } from '../lib/attempts'
+import { lockNonce } from '../lib/chain'
 import { Check, LoaderCircle } from 'lucide-vue-next'
 import Envelope from './Envelope.vue'
 
@@ -36,6 +38,25 @@ const txHash = ref<Hash | null>(null)
 const outcome = ref<'SEALED' | 'FAILED' | 'UNKNOWN' | null>(null)
 // Freeze the unlock time when the user reviews, so it matches what they confirm.
 const frozenUnlock = ref<number | null>(null)
+// Audit L-1: an earlier signed lock that may still land. Until it expires, only its exact terms can be retried.
+const pending = ref<PendingAttempt | null>(null)
+
+onMounted(async () => {
+  try {
+    const a = activeAttempt(props.owner, await lockNonce(props.owner), props.now)
+    if (!a) return
+    pending.value = a
+    amountText.value = formatUsdt(BigInt(a.amount)).replace(/,/g, '')
+    label.value = a.label
+    frozenUnlock.value = Number(a.unlockAt)
+  } catch {
+    // Without the nonce we cannot tell; the contract still rejects a second lock on the same nonce.
+  }
+})
+
+const pendingUntil = computed(() =>
+  pending.value ? new Date(pending.value.deadline * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '',
+)
 
 const maxAmount = computed(() => (props.balance < MAX_AMOUNT ? props.balance : MAX_AMOUNT))
 const amount = computed(() => parseUsdt(amountText.value))
@@ -77,7 +98,7 @@ function review() {
 }
 
 function editAgain() {
-  frozenUnlock.value = null
+  if (!pending.value) frozenUnlock.value = null
   stage.value = 'form'
 }
 
@@ -92,11 +113,11 @@ async function seal() {
   error.value = null
   step.value = null
   try {
-    const result = await createLock(props.owner, amount.value, BigInt(unlockAt.value), (s) => (step.value = s))
+    const result = await createLock(props.owner, amount.value, BigInt(unlockAt.value), (s) => (step.value = s), cleanLabel(label.value))
     txHash.value = result.txHash
     outcome.value = result.step
-    if (result.step === 'SEALED' && result.lockId !== undefined) {
-      saveLockMeta(result.lockId, { label: cleanLabel(label.value) || undefined, sealedAt: result.sealedAt })
+    if (result.step === 'SEALED' && result.lock !== undefined) {
+      saveLockMeta(result.lock, { label: cleanLabel(label.value) || undefined, sealedAt: result.sealedAt })
     }
     stage.value = 'result'
   } catch (e) {
@@ -161,7 +182,7 @@ function pickAmount(units: bigint) {
       <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
       <div class="group">
         <button class="btn" @click="seal">Seal it</button>
-        <button class="btn secondary" @click="editAgain">Change something</button>
+        <button v-if="!pending" class="btn secondary" @click="editAgain">Change something</button>
       </div>
     </template>
 
@@ -173,17 +194,21 @@ function pickAmount(units: bigint) {
       </div>
 
       <p v-if="noFunds" class="notice plain">You need at least 1 USDT on Polygon in Nimiq Pay to create a lock.</p>
+      <p v-if="pending" class="notice plain" role="status">
+        <strong>Your last lock is still signed</strong>
+        It may still go through, so you can only retry the same amount and date until {{ pendingUntil }}. After that you can change them.
+      </p>
 
       <div class="group">
         <label for="amount">How much?</label>
         <div class="amount-row">
-          <input id="amount" v-model="amountText" class="amount-input num" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-describedby="amount-help" />
+          <input id="amount" v-model="amountText" :disabled="!!pending" class="amount-input num" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-describedby="amount-help" />
           <span class="secondary">USDT</span>
         </div>
         <div class="choices four">
-          <button v-for="c in amountChips" :key="c.toString()" type="button" class="choice" :disabled="c > balance"
+          <button v-for="c in amountChips" :key="c.toString()" type="button" class="choice" :disabled="c > balance || !!pending"
             :aria-pressed="amount === c" @click="pickAmount(c)">{{ formatUsdt(c).replace('.00', '') }}</button>
-          <button type="button" class="choice" :disabled="maxAmount < MIN_AMOUNT" @click="pickAmount(maxAmount)">Max</button>
+          <button type="button" class="choice" :disabled="maxAmount < MIN_AMOUNT || !!pending" @click="pickAmount(maxAmount)">Max</button>
         </div>
         <p id="amount-help" class="meta">{{ formatUsdt(balance) }} USDT available · up to {{ formatUsdt(MAX_AMOUNT).replace('.00', '') }} per lock</p>
         <p v-if="amountProblem" class="problem" role="alert">{{ amountProblem }}</p>
@@ -192,8 +217,8 @@ function pickAmount(units: bigint) {
       <div class="group">
         <span class="label" id="duration-label">Lock it for</span>
         <div class="choices" role="group" aria-labelledby="duration-label">
-          <button v-for="d in durations" :key="d.sec" type="button" class="choice" :aria-pressed="duration === d.sec" @click="duration = d.sec">{{ d.label }}</button>
-          <button type="button" class="choice" :aria-pressed="duration === 'custom'" @click="duration = 'custom'">Pick a date</button>
+          <button v-for="d in durations" :key="d.sec" type="button" class="choice" :aria-pressed="!pending && duration === d.sec" :disabled="!!pending" @click="duration = d.sec">{{ d.label }}</button>
+          <button type="button" class="choice" :aria-pressed="!pending && duration === 'custom'" :disabled="!!pending" @click="duration = 'custom'">Pick a date</button>
         </div>
         <input v-if="duration === 'custom'" v-model="customDate" type="datetime-local" aria-label="Unlock date and time" />
         <p v-if="unlockAt !== null && !dateProblem" class="meta">Opens {{ formatDate(unlockAt) }}</p>
@@ -202,7 +227,7 @@ function pickAmount(units: bigint) {
 
       <div class="group">
         <label for="label">Name it (optional)</label>
-        <input id="label" v-model="label" :maxlength="MAX_LABEL" placeholder="Rent, new phone, a trip" autocomplete="off" />
+        <input id="label" v-model="label" :disabled="!!pending" :maxlength="MAX_LABEL" placeholder="Rent, new phone, a trip" autocomplete="off" />
         <p class="meta">Only saved on this phone</p>
       </div>
 

@@ -25,7 +25,10 @@ export function createApp(service: RelayerService, opts: { allowedOrigins: strin
   }
 
   app.post('/v1/deposits', async (c) => c.json(await service.deposit(parseDeposit(await readJson(c)))))
-  app.post('/v1/withdrawals', async (c) => c.json(await service.withdraw(parseWithdrawal(await readJson(c)).lockId)))
+  app.post('/v1/withdrawals', async (c) => {
+    const w = parseWithdrawal(await readJson(c))
+    return c.json(await service.withdraw(w.lockId, w.contract))
+  })
   app.get('/v1/health', async (c) => c.json(await service.health()))
 
   app.notFound((c) => c.json({ error: { code: 'NOT_FOUND', message: 'Not found' } }, 404))

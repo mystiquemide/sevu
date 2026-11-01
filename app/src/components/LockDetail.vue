@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Address, Hash } from 'viem'
-import { config } from '../config'
 import { simulateWithdraw, waitForSuccess, type LockRecord } from '../lib/chain'
 import { friendlyError, type FriendlyError } from '../lib/errors'
 import { formatDate, formatRemaining, formatUsdt } from '../lib/format'
@@ -16,7 +15,7 @@ const emit = defineEmits<{ back: []; changed: []; rescue: [] }>()
 
 const status = computed(() => lockStatus(props.lock, props.now))
 const progress = computed(() => lockProgress(props.lock, props.now))
-const label = ref(lockMeta(props.lock.id).label ?? '')
+const label = ref(lockMeta(props.lock).label ?? '')
 const editing = ref(false)
 const working = ref(false)
 const refusal = ref<string | null>(null)
@@ -28,7 +27,7 @@ const done = ref(false)
 
 function saveLabel() {
   label.value = cleanLabel(label.value)
-  saveLockMeta(props.lock.id, { label: label.value })
+  saveLockMeta(props.lock, { label: label.value })
   editing.value = false
   emit('changed')
 }
@@ -39,7 +38,7 @@ async function tryEarly() {
   refusal.value = null
   error.value = null
   try {
-    const reason = await simulateWithdraw(props.owner, props.lock.id)
+    const reason = await simulateWithdraw(props.owner, props.lock.contract, props.lock.id)
     refused.value = reason === 'StillLocked'
     refusal.value =
       reason === 'StillLocked'
@@ -60,7 +59,7 @@ async function withdraw() {
   error.value = null
   offerRescue.value = false
   try {
-    txHash.value = await relayWithdrawal(props.lock.id)
+    txHash.value = await relayWithdrawal(props.lock.id, props.lock.contract)
     const result = await waitForSuccess(txHash.value)
     if (result === 'reverted') throw new Error('Withdrawal transaction failed')
     done.value = true
@@ -100,7 +99,7 @@ async function withdraw() {
       <div v-if="status === 'sealed'" class="row"><dt class="secondary">Time left</dt><dd>{{ formatRemaining(Number(lock.unlockAt) - now) }}</dd></div>
       <div class="row">
         <dt class="secondary">Held by</dt>
-        <dd><a class="link" :href="`https://polygonscan.com/address/${config.lockAddress}`" target="_blank" rel="noopener">SevuLock contract<ExternalLink :size="14" :stroke-width="1.5" /></a></dd>
+        <dd><a class="link" :href="`https://polygonscan.com/address/${lock.contract}`" target="_blank" rel="noopener">SevuLock contract<ExternalLink :size="14" :stroke-width="1.5" /></a></dd>
       </div>
     </dl>
 

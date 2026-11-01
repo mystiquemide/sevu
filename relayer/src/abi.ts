@@ -20,7 +20,7 @@ export const sevuLockAbi = [
     type: 'function', name: 'getLock', stateMutability: 'view', inputs: [{ name: 'lockId', type: 'uint256' }],
     outputs: [{ type: 'tuple', components: [
       { name: 'owner', type: 'address' }, { name: 'amount', type: 'uint128' },
-      { name: 'unlockAt', type: 'uint64' }, { name: 'withdrawn', type: 'bool' },
+      { name: 'unlockAt', type: 'uint64' }, { name: 'lockedAt', type: 'uint40' }, { name: 'withdrawn', type: 'bool' },
     ] }],
   },
   { type: 'error', name: 'IntentExpired', inputs: [] },
@@ -38,4 +38,15 @@ export const sevuLockAbi = [
 export const usdt0Abi = [
   { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
+] as const
+
+/** getLock on the candidate contract (0x27eb...00ef), deployed before lockedAt existed. */
+export const getLockV0Abi = [
+  {
+    type: 'function', name: 'getLock', stateMutability: 'view', inputs: [{ name: 'lockId', type: 'uint256' }],
+    outputs: [{ type: 'tuple', components: [
+      { name: 'owner', type: 'address' }, { name: 'amount', type: 'uint128' },
+      { name: 'unlockAt', type: 'uint64' }, { name: 'withdrawn', type: 'bool' },
+    ] }],
+  },
 ] as const

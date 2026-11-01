@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { recoverTypedDataAddress } from 'viem'
@@ -27,6 +27,7 @@ describe('amount parsing', () => {
     expect(formatRemaining(0)).toBe('')
     expect(formatRemaining(90 * 60)).toBe('1 h 30 min')
     expect(formatRemaining(3 * 86_400 + 3600)).toBe('3 days 1 h')
+    expect(formatRemaining(86_400 + 7200)).toBe('1 day 2 h')
   })
 })
 
@@ -68,5 +69,33 @@ describe('typed data', () => {
       const sig = await acct.signTypedData({ ...td, types } as never)
       expect(await recoverTypedDataAddress({ ...td, types, signature: sig } as never)).toBe(acct.address)
     }
+  })
+})
+
+describe('pending attempt (audit L-1)', () => {
+  const owner = '0x1111111111111111111111111111111111111111' as const
+  const store = new Map<string, string>()
+  beforeEach(() => {
+    store.clear()
+    ;(globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    }
+  })
+
+  it('is active while its nonce is unused and its deadline is ahead', async () => {
+    const { savePendingAttempt, activeAttempt } = await import('../src/lib/attempts')
+    savePendingAttempt(owner, { nonce: '3', amount: '5000000', unlockAt: '2000000000', label: 'Rent', deadline: 1000 })
+    expect(activeAttempt(owner, 3n, 900)?.amount).toBe('5000000')
+  })
+
+  it('clears once the deadline passes or the nonce was used', async () => {
+    const { savePendingAttempt, activeAttempt } = await import('../src/lib/attempts')
+    savePendingAttempt(owner, { nonce: '3', amount: '5000000', unlockAt: '2000000000', label: '', deadline: 1000 })
+    expect(activeAttempt(owner, 3n, 1000)).toBeNull()
+    savePendingAttempt(owner, { nonce: '3', amount: '5000000', unlockAt: '2000000000', label: '', deadline: 1000 })
+    expect(activeAttempt(owner, 4n, 900)).toBeNull()
+    expect(store.size).toBe(0)
   })
 })

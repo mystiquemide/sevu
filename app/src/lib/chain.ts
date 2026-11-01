@@ -13,6 +13,17 @@ const lockAbi = [
     type: 'function', name: 'getLock', stateMutability: 'view', inputs: [{ type: 'uint256' }],
     outputs: [{ type: 'tuple', components: [
       { name: 'owner', type: 'address' }, { name: 'amount', type: 'uint128' },
+      { name: 'unlockAt', type: 'uint64' }, { name: 'lockedAt', type: 'uint40' }, { name: 'withdrawn', type: 'bool' },
+    ] }],
+  },
+] as const
+
+/** getLock on the candidate contract, deployed before lockedAt existed. */
+const getLockV0Abi = [
+  {
+    type: 'function', name: 'getLock', stateMutability: 'view', inputs: [{ type: 'uint256' }],
+    outputs: [{ type: 'tuple', components: [
+      { name: 'owner', type: 'address' }, { name: 'amount', type: 'uint128' },
       { name: 'unlockAt', type: 'uint64' }, { name: 'withdrawn', type: 'bool' },
     ] }],
   },
@@ -24,9 +35,15 @@ const tokenAbi = [
 ] as const
 
 export interface LockRecord {
+  /** The SevuLock deployment holding this lock. */
+  contract: Address
   id: bigint
+  /** Unique across deployments: contract plus id. */
+  key: string
   amount: bigint
   unlockAt: bigint
+  /** Block time the lock was created; null on the candidate contract, which did not record it. */
+  lockedAt: number | null
   withdrawn: boolean
 }
 
@@ -53,16 +70,32 @@ export function lockNonce(owner: Address) {
   return publicClient.readContract({ address: lockAddress(), abi: lockAbi, functionName: 'nonces', args: [owner] })
 }
 
-/** All locks of an owner, newest first, read straight from the contract. */
-export async function locksOf(owner: Address): Promise<LockRecord[]> {
-  const address = lockAddress()
+async function locksIn(address: Address, owner: Address, legacy: boolean): Promise<LockRecord[]> {
   const ids = await publicClient.readContract({ address, abi: lockAbi, functionName: 'locksOf', args: [owner] })
-  const locks = await Promise.all(
-    ids.map((id) => publicClient.readContract({ address, abi: lockAbi, functionName: 'getLock', args: [id] })),
+  return Promise.all(
+    ids.map(async (id) => {
+      const base = { contract: address, id, key: `${address}:${id}` }
+      if (legacy) {
+        const l = await publicClient.readContract({ address, abi: getLockV0Abi, functionName: 'getLock', args: [id] })
+        return { ...base, amount: l.amount, unlockAt: l.unlockAt, lockedAt: null, withdrawn: l.withdrawn }
+      }
+      const l = await publicClient.readContract({ address, abi: lockAbi, functionName: 'getLock', args: [id] })
+      return { ...base, amount: l.amount, unlockAt: l.unlockAt, lockedAt: l.lockedAt, withdrawn: l.withdrawn }
+    }),
   )
-  return locks
-    .map((l, i) => ({ id: ids[i]!, amount: l.amount, unlockAt: l.unlockAt, withdrawn: l.withdrawn }))
-    .reverse()
+}
+
+/** All locks of an owner across the current and earlier deployments, newest first, read straight from the chain. */
+export async function locksOf(owner: Address): Promise<LockRecord[]> {
+  const current = locksIn(lockAddress(), owner, false)
+  const legacy = config.legacyLocks.map((a) => locksIn(a, owner, true))
+  const [now, ...old] = await Promise.all([current, ...legacy])
+  return [...old.flat(), ...now].reverse()
+}
+
+/** Locks of an owner in the current deployment only (the lock flow compares before and after). */
+export function currentLocksOf(owner: Address): Promise<LockRecord[]> {
+  return locksIn(lockAddress(), owner, false)
 }
 
 export async function waitForSuccess(hash: Hash): Promise<'success' | 'reverted' | 'unknown'> {
@@ -82,9 +115,9 @@ export function withdrawCalldata(lockId: bigint): Hex {
  * Asks the contract itself, read-only, whether this withdrawal would go through right now.
  * Returns null when it would succeed, otherwise the contract's own error name.
  */
-export async function simulateWithdraw(from: Address, lockId: bigint): Promise<string | null> {
+export async function simulateWithdraw(from: Address, contract: Address, lockId: bigint): Promise<string | null> {
   try {
-    await publicClient.simulateContract({ address: lockAddress(), abi: lockAbi, functionName: 'withdraw', args: [lockId], account: from })
+    await publicClient.simulateContract({ address: contract, abi: lockAbi, functionName: 'withdraw', args: [lockId], account: from })
     return null
   } catch (err) {
     if (err instanceof BaseError) {

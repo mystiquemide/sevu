@@ -60,7 +60,12 @@ export function parseDeposit(body: unknown): DepositRequest {
   }
 }
 
-export function parseWithdrawal(body: unknown): { lockId: bigint } {
+export function parseWithdrawal(body: unknown): { lockId: bigint; contract?: Address } {
   const b = obj(body, 'body')
-  return { lockId: uint(b.lockId, 'lockId') }
+  let contract: Address | undefined
+  if (b.contract !== undefined) {
+    if (typeof b.contract !== 'string' || !isAddress(b.contract, { strict: false })) bad('contract')
+    contract = getAddress(b.contract)
+  }
+  return { lockId: uint(b.lockId, 'lockId'), contract }
 }
