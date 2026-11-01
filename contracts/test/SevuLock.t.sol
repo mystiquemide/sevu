@@ -75,12 +75,30 @@ contract SevuLockTest is Test {
         assertEq(l.owner, owner);
         assertEq(l.amount, 10e6);
         assertEq(l.unlockAt, unlockAt);
+        assertEq(l.lockedAt, block.timestamp);
         assertFalse(l.withdrawn);
         assertEq(lock.totalLocked(), 10e6);
         assertEq(lock.nonces(owner), 1);
         assertEq(lock.locksOf(owner).length, 1);
         assertEq(token.balanceOf(address(lock)), 10e6);
         assertEq(token.balanceOf(relayer), 0);
+    }
+
+    function test_LockedAtIsBlockTimeAndStaysPut() public {
+        uint256 t0 = block.timestamp;
+        uint256 id = _deposit(10e6, uint64(t0 + 1 days));
+        vm.warp(t0 + 2 days);
+        lock.withdraw(id);
+        assertEq(lock.getLock(id).lockedAt, t0);
+    }
+
+    function test_LockFitsTwoStorageSlots() public {
+        _deposit(10e6, uint64(block.timestamp + 1 days));
+        // _locks is slot 3 (forge inspect storageLayout); element 0 starts at keccak256(3).
+        bytes32 base = keccak256(abi.encode(uint256(3)));
+        bytes32 slot2 = vm.load(address(lock), bytes32(uint256(base) + 2));
+        assertEq(slot2, bytes32(0), "Lock must use exactly two slots");
+        assertTrue(vm.load(address(lock), bytes32(uint256(base) + 1)) != bytes32(0));
     }
 
     function test_AllowanceZeroAfterDeposit() public {

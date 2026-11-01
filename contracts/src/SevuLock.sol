@@ -18,6 +18,8 @@ contract SevuLock is EIP712, ReentrancyGuard {
         address owner;
         uint128 amount;
         uint64 unlockAt;
+        /// @dev Block time the lock was created. uint40 keeps the struct in two storage slots.
+        uint40 lockedAt;
         bool withdrawn;
     }
 
@@ -142,7 +144,16 @@ contract SevuLock is EIP712, ReentrancyGuard {
 
         lockId = _locks.length;
         // forge-lint: disable-next-line(unsafe-typecast) bounded by the check above
-        _locks.push(Lock({owner: owner, amount: uint128(received), unlockAt: unlockAt, withdrawn: false}));
+        _locks.push(
+            Lock({
+                owner: owner,
+                amount: uint128(received),
+                unlockAt: unlockAt,
+                // forge-lint: disable-next-line(unsafe-typecast) block time fits uint40 until year 36812
+                lockedAt: uint40(block.timestamp),
+                withdrawn: false
+            })
+        );
         _ownerLocks[owner].push(lockId);
         totalLocked += received;
         emit Locked(lockId, owner, received, unlockAt);
