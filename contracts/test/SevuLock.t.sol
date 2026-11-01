@@ -101,6 +101,20 @@ contract SevuLockTest is Test {
         assertTrue(vm.load(address(lock), bytes32(uint256(base) + 1)) != bytes32(0));
     }
 
+    /// Documents audit pass 2 lead L-1: two intents signed with the same nonce are both valid until one lands.
+    /// The first one submitted wins and the other becomes stale. Both were signed by the owner.
+    function test_SameNonceIntents_FirstSubmittedWins() public {
+        SevuLock.LockIntent memory a = _intent(5e6, uint64(block.timestamp + 365 days));
+        SevuLock.LockIntent memory b = _intent(5e6, uint64(block.timestamp + 7 days));
+        bytes memory sigA = _signIntent(a, ownerKey);
+        bytes memory sigB = _signIntent(b, ownerKey);
+        SevuLock.Permit memory p = _signPermit(5e6);
+        uint256 id = lock.depositWithPermit(a, sigA, p);
+        assertEq(lock.getLock(id).unlockAt, a.unlockAt);
+        vm.expectRevert(SevuLock.InvalidNonce.selector);
+        lock.depositWithPermit(b, sigB, p);
+    }
+
     function test_AllowanceZeroAfterDeposit() public {
         _deposit(10e6, uint64(block.timestamp + 1 days));
         assertEq(token.allowance(owner, address(lock)), 0);
