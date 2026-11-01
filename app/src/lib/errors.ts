@@ -7,7 +7,7 @@ export interface FriendlyError {
   cancelled?: boolean
 }
 
-const RELAYER: Record<string, FriendlyError> = {
+export const RELAYER_MESSAGES: Record<string, FriendlyError> = {
   AMOUNT_OUT_OF_RANGE: { title: 'That amount is outside the limit', action: 'Choose between 1 and 10 USDT for now.' },
   UNLOCK_OUT_OF_RANGE: { title: 'That unlock date is not allowed', action: 'Pick a date at least 10 minutes and at most 2 years away.' },
   INTENT_EXPIRED: { title: 'Your signatures expired', action: 'Start the lock again and sign both requests.' },
@@ -21,12 +21,17 @@ const RELAYER: Record<string, FriendlyError> = {
   BUDGET_EXHAUSTED: { title: 'Free locking is paused for today', action: 'Try again tomorrow. Existing locks are safe.' },
   SIMULATION_FAILED: { title: 'The contract would refuse this request', action: 'Check the amount and date, then try again.' },
   CHAIN_UNAVAILABLE: { title: 'Polygon is not reachable right now', action: 'Try again in a minute.' },
+  STILL_LOCKED: { title: 'Not open yet', action: 'This lock opens at its unlock time. Refresh in a moment.' },
+  ALREADY_WITHDRAWN: { title: 'Already withdrawn', action: 'This lock was paid back to your wallet. Refresh to see it in History.' },
+  LOCK_NOT_FOUND: { title: 'Lock not found', action: 'Refresh your locks. If it persists, use Withdraw directly.' },
+  BAD_REQUEST: { title: 'Sevu sent a request the relayer could not read', action: 'Reload Sevu and try again. Nothing was moved.' },
+  INTERNAL: { title: 'The relayer had a problem', action: 'Try again in a minute, or use Withdraw directly. Nothing was moved.' },
   RELAYER_UNREACHABLE: { title: 'Sevu could not reach its relayer', action: 'Check your connection and try again. Nothing was moved.' },
 }
 
 export function friendlyError(err: unknown): FriendlyError {
   if (err instanceof RelayerError) {
-    return RELAYER[err.code] ?? { title: 'The request was refused', action: 'Try again. Nothing was moved.' }
+    return RELAYER_MESSAGES[err.code] ?? { title: 'The request was refused', action: 'Try again. Nothing was moved.' }
   }
   const e = err as { code?: number | string; type?: string; message?: string } | undefined
   const msg = `${e?.type ?? ''} ${e?.message ?? ''}`

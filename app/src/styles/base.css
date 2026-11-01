@@ -24,8 +24,8 @@
   --wax-soft: rgba(180, 35, 24, 0.08);
 
   /* Semantic: green only means "ready". */
-  --ready: #15803d;
-  --ready-soft: rgba(21, 128, 61, 0.08);
+  --ready: #166534;
+  --ready-soft: rgba(22, 101, 52, 0.08);
   --danger: #b42318;
   --danger-soft: #fdf1f0;
 

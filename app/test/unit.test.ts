@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { recoverTypedDataAddress } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { formatRemaining, formatUsdt, parseUsdt } from '../src/lib/format'
-import { friendlyError } from '../src/lib/errors'
+import { friendlyError, RELAYER_MESSAGES } from '../src/lib/errors'
 import { RelayerError } from '../src/lib/relayer'
 import { buildIntent, buildPermit } from '../src/lib/lockFlow'
 
@@ -39,6 +39,15 @@ describe('error messages', () => {
   it('treats wallet rejection as a quiet cancel', () => {
     expect(friendlyError({ code: 4001, message: 'User rejected' }).cancelled).toBe(true)
   })
+  it('every relayer error code has its own message (error matrix, FR-017)', () => {
+    const src = readFileSync(fileURLToPath(new URL('../../relayer/src/errors.ts', import.meta.url)), 'utf8')
+    const codes = [...src.matchAll(/^  \| '([A-Z_]+)'/gm)].map((m) => m[1]!)
+    expect(codes.length).toBeGreaterThan(10)
+    const missing = codes.filter((c) => !RELAYER_MESSAGES[c])
+    expect(missing).toEqual([])
+    for (const c of codes) expect(RELAYER_MESSAGES[c]!.action.length).toBeGreaterThan(10)
+  })
+
   it('short titles have no trailing period', () => {
     for (const code of ['AMOUNT_OUT_OF_RANGE', 'NONCE_MISMATCH', 'RELAYER_UNREACHABLE', 'NOPE']) {
       expect(friendlyError(new RelayerError(code, 'x')).title.endsWith('.')).toBe(false)

@@ -11,6 +11,21 @@ import { polygon } from 'viem/chains'
 
 const require = createRequire(import.meta.url)
 const { chromium } = require('playwright')
+const axeSource = readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8')
+const a11y = []
+// WCAG 2.1 AA scan plus a 44px touch-target check on every screen the run visits (NFR-005).
+async function audit(page, screen) {
+  await page.waitForTimeout(500) // let entrance animations settle so contrast is judged at rest
+  await page.addScriptTag({ content: axeSource })
+  const res = await page.evaluate(async () => {
+    const r = await window.axe.run(document, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } })
+    return r.violations.filter((v) => ['serious', 'critical'].includes(v.impact)).map((v) => ({ id: v.id, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ')) }))
+  })
+  const small = await page.evaluate(() => [...document.querySelectorAll('button, a[href], input, select, [role=button], summary')]
+    .filter((el) => { const b = el.getBoundingClientRect(); const st = getComputedStyle(el); return b.width > 0 && st.visibility !== 'hidden' && (b.height < 44 && b.width < 44 || b.height < 40) })
+    .map((el) => `${el.tagName.toLowerCase()} "${(el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 24)}" ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`))
+  a11y.push({ screen, violations: res, small })
+}
 const RPC = process.env.POLYGON_RPC
 if (!RPC) { console.log('POLYGON_RPC not set, skipping'); process.exit(0) }
 
@@ -98,6 +113,7 @@ try {
     const page = await browser.newPage()
     await page.goto(APP)
     await page.getByText('Open Sevu in Nimiq Pay').waitFor({ timeout: 5000 })
+    await audit(page, '00-outside')
     check('outside Nimiq Pay shows guidance', true)
     await page.close()
   }
@@ -167,9 +183,10 @@ try {
     const page = await walletPage()
     await page.goto(APP)
     await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
-    await page.getByRole('button', { name: /^Lock #0: 1\.00 USDT, Sealed/ }).waitFor({ timeout: 15000 })
+    await page.getByRole('button', { name: /^Sealed: Lock #0 / }).waitFor({ timeout: 15000 })
     check('lock on the earlier contract is listed', true)
     await shot(page, '01-home-legacy')
+    await audit(page, '01-home-legacy')
 
     await page.getByRole('button', { name: 'Lock USDT' }).click()
     await page.getByLabel('How much?').fill('11')
@@ -178,32 +195,36 @@ try {
     await page.getByLabel('How much?').fill('5')
     await page.getByLabel(/Name it/).fill('Rent')
     await shot(page, '02-create')
+    await audit(page, '02-create')
     await page.getByRole('button', { name: 'Review' }).click()
     await page.getByText('cannot be withdrawn before the unlock date').waitFor()
     await shot(page, '03-review')
+    await audit(page, '03-review')
     await page.getByRole('button', { name: 'Seal it' }).click()
     await page.getByRole('heading', { name: 'Sealed' }).waitFor({ timeout: 60000 })
     await page.waitForTimeout(1300)
     await shot(page, '04-sealed')
+    await audit(page, '04-sealed')
     check('lock sealed through relayer', (await bal(lock)) === 5_000_000n, `contract holds ${await bal(lock)}`)
     check('owner still has 0 POL', (await pub.getBalance({ address: owner.address })) === 0n)
     await page.getByRole('button', { name: 'Back to my savings' }).click()
-    const card = page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ })
+    const card = page.getByRole('button', { name: /^Sealed: Rent / })
     await card.waitFor({ timeout: 10000 })
     check('home lists the named lock as Sealed', true)
     await shot(page, '05-home-locked')
 
     await page.reload()
-    await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ }).waitFor({ timeout: 15000 })
+    await page.getByRole('button', { name: /^Sealed: Rent / }).waitFor({ timeout: 15000 })
     const total = await page.locator('.total').innerText()
     check('after reload: both locks listed, names kept apart, total 6.00 from chain', total.startsWith('6.00')
-      && await page.getByRole('button', { name: /^Lock #0: 1\.00 USDT/ }).isVisible(), total)
+      && await page.getByRole('button', { name: /Lock #0 / }).isVisible(), total)
 
-    await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ }).click()
+    await page.getByRole('button', { name: /^Sealed: Rent / }).click()
     await page.getByRole('button', { name: 'Try to withdraw early' }).click()
     await page.getByText('The contract refused.').waitFor({ timeout: 15000 })
     check('early withdrawal: contract refusal shown (FR-012)', (await bal(lock)) === 5_000_000n)
     await shot(page, '06-refused')
+    await audit(page, '06-refused')
     await page.getByRole('button', { name: 'Back' }).click()
 
     await testClient.increaseTime({ seconds: 31 * 86_400 })
@@ -212,15 +233,17 @@ try {
     await page.getByText('2 locks are ready to withdraw').waitFor({ timeout: 15000 })
     check('after unlock time the home shows ready', true)
     await shot(page, '07-ripe')
-    await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Ready/ }).click()
+    await audit(page, '07-ripe')
+    await page.getByRole('button', { name: /^Ready: Rent / }).click()
     await page.getByRole('button', { name: 'Withdraw to my wallet' }).click()
     await page.getByText('Withdrawn. 5.00 USDT is back in your wallet.').waitFor({ timeout: 60000 })
     check('withdraw via relayer returns funds (FR-013)', (await bal(owner.address)) === 19_000_000n && (await bal(lock)) === 0n)
     await shot(page, '08-withdrawn')
+    await audit(page, '08-withdrawn')
     await page.getByRole('button', { name: 'Back' }).click()
     await page.getByText('History (1)').waitFor({ timeout: 10000 })
     check('withdrawn lock moves to history', true)
-    await page.getByRole('button', { name: /^Lock #0: 1\.00 USDT, Ready/ }).click()
+    await page.getByRole('button', { name: /^Ready: Lock #0 / }).click()
     await page.getByRole('button', { name: 'Withdraw to my wallet' }).click()
     await page.getByText('Withdrawn. 1.00 USDT is back in your wallet.').waitFor({ timeout: 60000 })
     check('lock on the earlier contract withdraws through the relayer', (await bal(owner.address)) === 20_000_000n && (await bal(legacyLock)) === 0n)
@@ -239,6 +262,7 @@ try {
     await page.getByRole('button', { name: 'Withdraw', exact: true }).waitFor({ timeout: 15000 })
     await page.waitForTimeout(400)
     await shot(page, '09-rescue')
+    await audit(page, '09-rescue')
     const relayerNonceBefore = await pub.getTransactionCount({ address: deployer.account.address })
     await page.getByRole('button', { name: 'Withdraw', exact: true }).click()
     await page.getByText('No locks are ready yet.').waitFor({ timeout: 60000 })
@@ -260,6 +284,7 @@ try {
     const clip = await page.evaluate(() => navigator.clipboard.readText())
     check('account sheet copies the full address', clip.toLowerCase() === owner.address.toLowerCase())
     await shot(page, '10-account')
+    await audit(page, '10-account')
     await page.keyboard.press('Escape')
     await sheet.waitFor({ state: 'detached', timeout: 3000 })
 
@@ -276,6 +301,7 @@ try {
     await page.getByText('Nimiq Pay is not on Polygon').waitFor({ timeout: 10000 })
     check('leaving Polygon shows the notice and disables locking', await page.getByRole('button', { name: 'Lock USDT' }).isDisabled())
     await shot(page, '11-wrong-chain')
+    await audit(page, '11-wrong-chain')
     await page.getByRole('button', { name: 'Switch to Polygon' }).click()
     await page.getByText('Nimiq Pay is not on Polygon').waitFor({ state: 'detached', timeout: 10000 })
     check('switching back to Polygon restores the app', !(await page.getByRole('button', { name: 'Lock USDT' }).isDisabled()))
@@ -286,6 +312,14 @@ try {
   check('run', false, e.message)
 } finally {
   for (const p of procs) { try { process.kill(-p.pid, 'SIGTERM') } catch {} }
+}
+if (a11y.length) {
+  const bad = a11y.filter((x) => x.violations.length)
+  const small = a11y.filter((x) => x.small.length)
+  for (const x of bad) console.log(`a11y ${x.screen}: ${JSON.stringify(x.violations)}`)
+  for (const x of small) console.log(`touch ${x.screen}: ${x.small.join(' | ')}`)
+  check(`no serious or critical WCAG AA issues on ${a11y.length} screens`, bad.length === 0)
+  check(`every control at least 44px on ${a11y.length} screens`, small.length === 0)
 }
 const failed = results.filter((r) => !r.ok).length
 console.log(`\n${results.length - failed}/${results.length} checks passed`)

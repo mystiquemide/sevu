@@ -19,9 +19,9 @@ const tone = computed(() => ({ sealed: 'wax', ripe: 'ready', withdrawn: 'muted' 
 </script>
 
 <template>
-  <button class="lock-row" type="button" @click="$emit('open')"
-    :aria-label="`${title}: ${formatUsdt(lock.amount)} USDT, ${statusLabel[status]}. ${subtitle}`">
-    <Postmark :date="lock.unlockAt" :tone="tone" :size="44" :ring="false" />
+  <button class="lock-row" type="button" @click="$emit('open')">
+    <span class="visually-hidden">{{ statusLabel[status] }}: </span>
+    <Postmark :date="lock.unlockAt" :tone="tone" :size="44" :ring="false" decorative />
     <span class="body">
       <span class="title">{{ title }}</span>
       <span class="small" :class="status === 'ripe' ? 'ready-text' : 'secondary'">{{ subtitle }}</span>

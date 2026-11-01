@@ -58,7 +58,7 @@ async function rescue(l: LockRecord) {
 
     <div v-if="ripe.length" class="list card">
       <div v-for="l in ripe" :key="l.key" class="rescue-row">
-        <Postmark :date="l.unlockAt" tone="ready" :size="44" :ring="false" />
+        <Postmark :date="l.unlockAt" tone="ready" :size="44" :ring="false" decorative />
         <div class="body">
           <span class="title">{{ lockTitle(l) }}</span>
           <span class="meta">{{ formatUsdt(l.amount) }} USDT</span>

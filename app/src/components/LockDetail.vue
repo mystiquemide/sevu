@@ -131,6 +131,6 @@ async function withdraw() {
 .facts .row { min-height: 44px; border-bottom: 1px solid var(--line); }
 .facts .row:last-child { border-bottom: 0; }
 dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; }
-dd .link { font-family: var(--sans); font-size: 15px; min-height: 0; }
+dd .link { font-family: var(--sans); font-size: 15px; }
 .center { align-self: center; text-align: center; }
 </style>

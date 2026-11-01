@@ -45,7 +45,7 @@ const caption = computed(() => {
     </svg>
 
     <div class="stamp-slot">
-      <Postmark v-if="stamped" :date="unlockAt" :tone="tone" :size="96" :press="press" />
+      <Postmark v-if="stamped" :date="unlockAt" :tone="tone" :size="96" :press="press" decorative />
       <div v-else class="stamp-placeholder" aria-hidden="true" />
     </div>
 

@@ -4,8 +4,8 @@ import { stampParts } from '../lib/stamp'
 
 // The signature detail: a round postmark carrying the unlock date. Used on locks, at sealing and nowhere else.
 const props = withDefaults(
-  defineProps<{ date: bigint | number; tone?: 'wax' | 'ready' | 'muted'; size?: number; ring?: boolean; waves?: boolean; press?: boolean }>(),
-  { tone: 'wax', size: 96, ring: true, waves: false, press: false },
+  defineProps<{ date: bigint | number; tone?: 'wax' | 'ready' | 'muted'; size?: number; ring?: boolean; waves?: boolean; press?: boolean; decorative?: boolean }>(),
+  { tone: 'wax', size: 96, ring: true, waves: false, press: false, decorative: false },
 )
 const parts = computed(() => stampParts(props.date))
 const color = computed(() => ({ wax: 'var(--wax)', ready: 'var(--ready)', muted: 'var(--text-3)' })[props.tone])
@@ -16,7 +16,8 @@ const width = computed(() => (props.waves ? props.size * 1.7 : props.size))
 <template>
   <svg
     class="postmark" :class="{ press }" :width="width" :height="size" :viewBox="waves ? '0 0 170 100' : '0 0 100 100'"
-    role="img" :aria-label="`Postmark ${parts.day} ${parts.month} ${parts.year}`" :style="{ color }"
+    :role="decorative ? undefined : 'img'" :aria-hidden="decorative ? 'true' : undefined"
+    :aria-label="decorative ? undefined : `Postmark ${parts.day} ${parts.month} ${parts.year}`" :style="{ color }"
   >
     <defs><path :id="uid" d="M 13 50 A 37 37 0 0 1 87 50" /></defs>
     <g class="ink" fill="none" stroke="currentColor">

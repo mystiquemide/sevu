@@ -47,7 +47,7 @@ export interface LockRecord {
   withdrawn: boolean
 }
 
-export const publicClient = createPublicClient({ chain: polygon, transport: http(config.rpcUrl, { timeout: 20_000 }) })
+export const publicClient = createPublicClient({ chain: polygon, transport: http(config.rpcUrl, { timeout: 20_000, batch: { wait: 16 } }) })
 
 function lockAddress(): Address {
   if (!config.lockAddress) throw new Error('NOT_CONFIGURED')

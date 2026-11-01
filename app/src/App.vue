@@ -52,9 +52,6 @@ const totalLocked = computed(() => active.value.reduce((sum, l) => sum + l.amoun
 const readyCount = computed(() => active.value.filter((l) => lockStatus(l, now.value) === 'ripe').length)
 const selected = computed(() => locks.value.find((l) => l.key === selectedKey.value) ?? null)
 
-function featuredLabel(l: LockRecord) {
-  return `${lockTitle(l)}: ${formatUsdt(l.amount)} USDT, ${statusLabel[lockStatus(l, now.value)]}`
-}
 
 async function refresh() {
   if (!owner.value) return
@@ -251,7 +248,8 @@ onUnmounted(() => {
             <Envelope :amount="0n" :unlock-at="now + 30 * 86_400" title="Your first lock" :now="now" :stamped="false" />
             <p class="secondary small center">Nothing sealed yet. Pick an amount and a date. Two signatures, no network fee.</p>
           </div>
-          <button v-else class="featured" type="button" :aria-label="featuredLabel(featured)" @click="open(featured)">
+          <button v-else class="featured" type="button" @click="open(featured)">
+            <span class="visually-hidden">{{ statusLabel[lockStatus(featured, now)] }}: </span>
             <Envelope :key="`${featured.key}-${metaVersion}`" :amount="featured.amount" :unlock-at="featured.unlockAt" :title="lockTitle(featured)"
               :status="lockStatus(featured, now)" :now="now" :progress="lockProgress(featured, now)" />
           </button>
@@ -287,7 +285,7 @@ onUnmounted(() => {
 .featured { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: var(--r-card); transition: transform 150ms var(--ease); }
 .featured:active { transform: scale(0.98); }
 .empty { display: flex; flex-direction: column; gap: 12px; }
-.empty :deep(.envelope) { opacity: 0.6; box-shadow: none; }
+.empty :deep(.envelope) { box-shadow: none; }
 .center { text-align: center; }
 .list { padding: 4px; display: flex; flex-direction: column; gap: 2px; }
 .history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--text-2); }

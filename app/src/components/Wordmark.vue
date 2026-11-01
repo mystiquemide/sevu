@@ -11,5 +11,5 @@
 
 <style scoped>
 .wordmark { display: inline-flex; align-items: center; gap: 8px; color: var(--text); }
-span { font-size: 18px; line-height: 1; font-weight: 600; }
+span { font-size: 18px; line-height: 1; font-weight: 500; }
 </style>
