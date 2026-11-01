@@ -1,0 +1,48 @@
+export type ErrorCode =
+  | 'BAD_REQUEST'
+  | 'AMOUNT_OUT_OF_RANGE'
+  | 'UNLOCK_OUT_OF_RANGE'
+  | 'INTENT_EXPIRED'
+  | 'PERMIT_EXPIRED'
+  | 'BAD_INTENT_SIGNATURE'
+  | 'BAD_PERMIT_SIGNATURE'
+  | 'NONCE_MISMATCH'
+  | 'INSUFFICIENT_BALANCE'
+  | 'DUPLICATE_PENDING'
+  | 'RATE_LIMITED'
+  | 'BUDGET_EXHAUSTED'
+  | 'LOCK_NOT_FOUND'
+  | 'ALREADY_WITHDRAWN'
+  | 'STILL_LOCKED'
+  | 'SIMULATION_FAILED'
+  | 'CHAIN_UNAVAILABLE'
+  | 'INTERNAL'
+
+const STATUS: Record<ErrorCode, number> = {
+  BAD_REQUEST: 400,
+  AMOUNT_OUT_OF_RANGE: 422,
+  UNLOCK_OUT_OF_RANGE: 422,
+  INTENT_EXPIRED: 422,
+  PERMIT_EXPIRED: 422,
+  BAD_INTENT_SIGNATURE: 422,
+  BAD_PERMIT_SIGNATURE: 422,
+  NONCE_MISMATCH: 409,
+  INSUFFICIENT_BALANCE: 422,
+  DUPLICATE_PENDING: 409,
+  RATE_LIMITED: 429,
+  BUDGET_EXHAUSTED: 503,
+  LOCK_NOT_FOUND: 404,
+  ALREADY_WITHDRAWN: 409,
+  STILL_LOCKED: 409,
+  SIMULATION_FAILED: 422,
+  CHAIN_UNAVAILABLE: 503,
+  INTERNAL: 500,
+}
+
+export class RelayError extends Error {
+  readonly status: number
+  constructor(readonly code: ErrorCode, message: string, readonly data?: Record<string, string>) {
+    super(message)
+    this.status = STATUS[code]
+  }
+}
