@@ -22,6 +22,12 @@ export async function connect(): Promise<Address> {
   return getAddress(first)
 }
 
+export async function switchToPolygon() {
+  const p = evmProvider()
+  if (!p) throw new Error('NO_PROVIDER')
+  await ensurePolygon(p)
+}
+
 async function ensurePolygon(p: Eip1193) {
   const current = String(await p.request({ method: 'eth_chainId' })).toLowerCase()
   if (current === POLYGON_HEX) return
@@ -43,4 +49,55 @@ export async function sendTransaction(from: Address, to: Address, data: Hex): Pr
   if (!p) throw new Error('NO_PROVIDER')
   await ensurePolygon(p)
   return (await p.request({ method: 'eth_sendTransaction', params: [{ from, to, data }] })) as Hex
+}
+
+export interface WalletSnapshot {
+  account: Address | null
+  onPolygon: boolean
+}
+
+/** Reads the wallet's current account and network without prompting. */
+export async function readWallet(): Promise<WalletSnapshot> {
+  const p = evmProvider()
+  if (!p) return { account: null, onPolygon: false }
+  const [accounts, chain] = await Promise.all([
+    p.request({ method: 'eth_accounts' }) as Promise<string[]>,
+    p.request({ method: 'eth_chainId' }) as Promise<string>,
+  ])
+  return { account: accounts[0] ? getAddress(accounts[0]) : null, onPolygon: String(chain).toLowerCase() === POLYGON_HEX }
+}
+
+/**
+ * Follows account and network changes made in Nimiq Pay. Uses provider events when the host emits them,
+ * and re-reads the wallet whenever the app returns to the foreground in case it does not.
+ */
+export function watchWallet(onChange: (w: WalletSnapshot) => void): () => void {
+  const p = evmProvider()
+  if (!p) return () => {}
+  let last = ''
+  const check = async () => {
+    try {
+      const w = await readWallet()
+      const key = `${w.account}|${w.onPolygon}`
+      if (key !== last) {
+        last = key
+        onChange(w)
+      }
+    } catch {
+      // A failed read is not a change; the next event or focus will try again.
+    }
+  }
+  void readWallet().then((w) => (last = `${w.account}|${w.onPolygon}`)).catch(() => {})
+  const onEvent = () => void check()
+  const onVisible = () => { if (document.visibilityState === 'visible') void check() }
+  p.on?.('accountsChanged', onEvent)
+  p.on?.('chainChanged', onEvent)
+  document.addEventListener('visibilitychange', onVisible)
+  window.addEventListener('focus', onEvent)
+  return () => {
+    p.removeListener?.('accountsChanged', onEvent)
+    p.removeListener?.('chainChanged', onEvent)
+    document.removeEventListener('visibilitychange', onVisible)
+    window.removeEventListener('focus', onEvent)
+  }
 }

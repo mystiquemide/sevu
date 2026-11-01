@@ -99,12 +99,20 @@ try {
     await page.exposeFunction('__send', async (tx) => ownerWallet.sendTransaction({ to: tx.to, data: tx.data }))
     await page.addInitScript(({ address, reject }) => {
       let chainId = '0x1'
+      let account = address
+      const listeners = {}
+      const emit = (ev, arg) => (listeners[ev] ?? []).forEach((f) => f(arg))
+      // Test hooks standing in for the user changing things in Nimiq Pay
+      window.__setAccount = (a) => { account = a; emit('accountsChanged', a ? [a] : []) }
+      window.__setChain = (c) => { chainId = c; emit('chainChanged', c) }
       window.nimiq = {}
       window.ethereum = {
+        on(ev, f) { (listeners[ev] ??= []).push(f) },
+        removeListener(ev, f) { listeners[ev] = (listeners[ev] ?? []).filter((x) => x !== f) },
         async request({ method, params }) {
-          if (method === 'eth_requestAccounts') return [address]
+          if (method === 'eth_requestAccounts' || method === 'eth_accounts') return account ? [account] : []
           if (method === 'eth_chainId') return chainId
-          if (method === 'wallet_switchEthereumChain') { chainId = params[0].chainId; return null }
+          if (method === 'wallet_switchEthereumChain') { chainId = params[0].chainId; emit('chainChanged', chainId); return null }
           if (method === 'eth_signTypedData_v4') {
             if (reject) { const e = new Error('User rejected the request'); e.code = 4001; throw e }
             return window.__sign(params[1])
@@ -213,6 +221,40 @@ try {
     const relayerNonceAfter = await pub.getTransactionCount({ address: deployer.account.address })
     check('rescue withdraws from the owner wallet without the relayer (FR-014)',
       (await bal(owner.address)) === 20_000_000n && relayerNonceAfter === relayerNonceBefore)
+  }
+  // 4. Following Nimiq Pay: account sheet, account switch, network switch
+  {
+    const page = await walletPage()
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP })
+    await page.goto(APP)
+    await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
+    await page.getByRole('button', { name: /^Wallet 0x/ }).click()
+    const sheet = page.getByRole('dialog', { name: 'Your wallet' })
+    await sheet.waitFor({ timeout: 5000 })
+    await sheet.getByRole('button', { name: 'Copy address' }).click()
+    await sheet.getByRole('button', { name: 'Copied' }).waitFor({ timeout: 3000 })
+    const clip = await page.evaluate(() => navigator.clipboard.readText())
+    check('account sheet copies the full address', clip.toLowerCase() === owner.address.toLowerCase())
+    await shot(page, '10-account')
+    await page.keyboard.press('Escape')
+    await sheet.waitFor({ state: 'detached', timeout: 3000 })
+
+    const other = privateKeyToAccount(generatePrivateKey()).address
+    await page.getByRole('button', { name: 'Lock USDT' }).click()
+    await page.getByLabel('How much?').waitFor()
+    await page.evaluate((a) => window.__setAccount(a), other)
+    await page.getByRole('button', { name: `Wallet ${other.slice(0, 6)}...${other.slice(-4)}. Show address` }).waitFor({ timeout: 10000 })
+    await page.getByText('Nothing sealed yet').waitFor({ timeout: 15000 })
+    const total = await page.locator('.total').innerText()
+    check('account switch leaves the half-done form and shows the new account', total.startsWith('0.00'), total)
+
+    await page.evaluate(() => window.__setChain('0x1'))
+    await page.getByText('Nimiq Pay is not on Polygon').waitFor({ timeout: 10000 })
+    check('leaving Polygon shows the notice and disables locking', await page.getByRole('button', { name: 'Lock USDT' }).isDisabled())
+    await shot(page, '11-wrong-chain')
+    await page.getByRole('button', { name: 'Switch to Polygon' }).click()
+    await page.getByText('Nimiq Pay is not on Polygon').waitFor({ state: 'detached', timeout: 10000 })
+    check('switching back to Polygon restores the app', !(await page.getByRole('button', { name: 'Lock USDT' }).isDisabled()))
   }
   await browser.close()
 } catch (e) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Address } from 'viem'
+import AccountSheet from './components/AccountSheet.vue'
 import CreateLock from './components/CreateLock.vue'
 import Envelope from './components/Envelope.vue'
 import LockDetail from './components/LockDetail.vue'
@@ -11,7 +12,7 @@ import { chainTime, locksOf, usdtBalance, type LockRecord } from './lib/chain'
 import { friendlyError, type FriendlyError } from './lib/errors'
 import { formatUsdt, shortAddress } from './lib/format'
 import { lockProgress, lockStatus, lockTitle, statusLabel } from './lib/lockView'
-import { connect, evmProvider } from './lib/wallet'
+import { connect, evmProvider, switchToPolygon, watchWallet, type WalletSnapshot } from './lib/wallet'
 
 type View = 'loading' | 'outside' | 'error' | 'home' | 'create' | 'detail' | 'rescue'
 
@@ -25,6 +26,10 @@ const refreshing = ref(false)
 const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
 const selectedId = ref<bigint | null>(null)
 const metaVersion = ref(0)
+const wrongChain = ref(false)
+const showAccount = ref(false)
+const switching = ref(false)
+let stopWatching: (() => void) | undefined
 // Chain time is the source of truth; keep an offset so countdowns tick locally between reads.
 const offset = ref(0)
 const now = ref(Math.floor(Date.now() / 1000))
@@ -101,10 +106,46 @@ async function start() {
   try {
     owner.value = await connect()
     view.value = location.hash === '#/rescue' ? 'rescue' : 'home'
+    stopWatching?.()
+    stopWatching = watchWallet(onWallet)
     await refresh()
   } catch (e) {
     error.value = friendlyError(e)
     view.value = 'error'
+  }
+}
+
+/** Nimiq Pay changed account or network while Sevu was open. */
+async function onWallet(w: WalletSnapshot) {
+  if (!w.account) {
+    error.value = { title: 'No account selected', action: 'Choose a Polygon account in Nimiq Pay.' }
+    view.value = 'error'
+    return
+  }
+  if (w.account !== owner.value) {
+    // Another person's locks: drop everything shown for the old account, including half-finished screens.
+    owner.value = w.account
+    locks.value = []
+    balance.value = 0n
+    loaded.value = false
+    selectedId.value = null
+    showAccount.value = false
+    if (view.value !== 'rescue') go('home')
+  }
+  wrongChain.value = !w.onPolygon
+  if (!wrongChain.value) await refresh()
+}
+
+async function backToPolygon() {
+  switching.value = true
+  try {
+    await switchToPolygon()
+    wrongChain.value = false
+    await refresh()
+  } catch (e) {
+    error.value = friendlyError(e)
+  } finally {
+    switching.value = false
   }
 }
 
@@ -131,6 +172,7 @@ onMounted(() => {
 })
 onUnmounted(() => {
   clearInterval(timer)
+  stopWatching?.()
   window.removeEventListener('online', setOnline)
   window.removeEventListener('offline', setOnline)
   window.removeEventListener('hashchange', route)
@@ -140,8 +182,18 @@ onUnmounted(() => {
 <template>
   <header class="top row">
     <Wordmark />
-    <span v-if="owner" class="meta">{{ shortAddress(owner) }}</span>
+    <button v-if="owner" class="account meta" :aria-label="`Wallet ${shortAddress(owner)}. Show address`" @click="showAccount = true">
+      {{ shortAddress(owner) }}
+    </button>
   </header>
+
+  <AccountSheet v-if="showAccount && owner" :address="owner" @close="showAccount = false" />
+
+  <div v-if="wrongChain && owner" class="notice plain chain" role="alert">
+    <strong>Nimiq Pay is not on Polygon</strong>
+    Sevu's locks live on Polygon. Switch back to see them and lock USDT.
+    <button class="btn secondary" :disabled="switching" @click="backToPolygon">{{ switching ? 'Switching' : 'Switch to Polygon' }}</button>
+  </div>
 
   <p v-if="!online" class="notice plain offline" role="status">You are offline. Amounts may be out of date.</p>
 
@@ -183,7 +235,7 @@ onUnmounted(() => {
           <div v-else class="skeleton" style="height: 44px; width: 55%" />
           <p class="meta">{{ formatUsdt(balance) }} USDT available</p>
         </div>
-        <button class="btn" @click="go('create')">Lock USDT</button>
+        <button class="btn" :disabled="wrongChain" @click="go('create')">Lock USDT</button>
       </div>
 
       <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
@@ -227,6 +279,10 @@ onUnmounted(() => {
 
 <style scoped>
 .top { min-height: 44px; margin-bottom: 24px; }
+.account { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; margin-right: -12px; border: 0; border-radius: var(--r-control); background: none; cursor: pointer; transition: background-color 150ms var(--ease); }
+.account:hover { background: var(--raised); }
+.chain { display: flex; flex-direction: column; gap: 4px; margin-bottom: 24px; }
+.chain .btn { margin-top: 8px; }
 .offline { margin-bottom: 16px; }
 .featured { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: var(--r-card); transition: transform 150ms var(--ease); }
 .featured:active { transform: scale(0.98); }

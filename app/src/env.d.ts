@@ -6,6 +6,8 @@ declare module '*.vue' {
 }
 interface Eip1193 {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>
+  on?(event: string, listener: (...args: unknown[]) => void): void
+  removeListener?(event: string, listener: (...args: unknown[]) => void): void
 }
 interface Window {
   ethereum?: Eip1193
