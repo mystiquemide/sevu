@@ -46,19 +46,26 @@ const canCreate = computed(() => cleanLabel(newName.value).length > 0 && targetV
 async function load() {
   stage.value = 'loading'
   error.value = null
+  // Each step is named so a failure on a real device says where it broke (no secrets in these messages).
+  let step = 'account'
   try {
     address.value = await nimAccount()
-    const [b, s] = await Promise.all([nimBalance(address.value), stakerOf(address.value)])
-    balance.value = b
-    staker.value = s
+    step = 'balance'
+    balance.value = await nimBalance(address.value)
+    step = 'stake'
+    staker.value = await stakerOf(address.value)
     jars.value = loadJars(address.value)
     stage.value = 'list'
   } catch (e) {
-    error.value = (e as Error).message === 'NO_PROVIDER'
-      ? { title: 'Jars need Nimiq Pay', action: 'Open Sevu inside Nimiq Pay to stake NIM toward a goal.' }
-      : (e as Error).message === 'NO_ACCOUNT'
-        ? { title: 'No Nimiq account', action: 'Create or select a NIM account in Nimiq Pay.' }
-        : { title: 'Could not read your NIM stake', action: 'Check your connection and try again.' }
+    const raw = e as { message?: string; type?: string; code?: number | string }
+    const msg = raw?.message ?? String(e)
+    if (msg === 'NO_PROVIDER') error.value = { title: 'Jars need Nimiq Pay', action: 'Open Sevu inside Nimiq Pay to stake NIM toward a goal.' }
+    else if (msg === 'NO_ACCOUNT') error.value = { title: 'No Nimiq account', action: 'Create or select a NIM account in Nimiq Pay.' }
+    else {
+      const where = { account: 'reading your Nimiq account', balance: 'reading your NIM balance', stake: 'reading your stake from the Nimiq network' }[step]
+      const detail = [raw?.type, raw?.code, msg].filter((x) => x !== undefined && x !== '').join(' · ').slice(0, 160)
+      error.value = { title: 'Could not load jars', action: `Failed while ${where}. Try again. Details: ${detail}` }
+    }
     stage.value = 'error'
   }
 }

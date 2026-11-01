@@ -62,15 +62,26 @@ export async function activeValidators(): Promise<Validator[]> {
 export async function nimAccount(): Promise<string> {
   const p = nimiqWallet()
   if (!p) throw new Error('NO_PROVIDER')
-  const accounts = await (await p).listAccounts()
-  if (!accounts[0]) throw new Error('NO_ACCOUNT')
-  return accounts[0]
+  const accounts = (await (await p).listAccounts()) as unknown[]
+  // Accept plain addresses and { address } objects; host versions differ.
+  const first = accounts?.[0] as string | { address?: string } | undefined
+  const address = typeof first === 'string' ? first : first?.address
+  if (!address) throw new Error('NO_ACCOUNT')
+  return address
 }
 
+/** NIM balance in luna: from Nimiq Pay, else from the Nimiq node (older hosts lack getBalance). */
 export async function nimBalance(address: string): Promise<number> {
   const p = nimiqWallet()
   if (!p) throw new Error('NO_PROVIDER')
-  return (await p).getBalance(address)
+  try {
+    const b = await (await p).getBalance(address)
+    if (typeof b === 'number') return b
+  } catch {
+    // fall through to the node
+  }
+  const acct = await rpc<{ balance: number }>('getAccountByAddress', [address])
+  return acct.balance ?? 0
 }
 
 /** Adds stake; creates the staker first time, delegating to the chosen validator. Returns Nimiq Pay's result. */
