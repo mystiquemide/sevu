@@ -11,7 +11,8 @@
     "start": "node dist/src/server.js",
     "dev": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:fork": "vitest run test/integration.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.17",

@@ -8,6 +8,7 @@ import {
   fallback,
   http,
   type Address,
+  type Chain,
   type Hash,
   type Hex,
 } from 'viem'
@@ -23,7 +24,7 @@ export interface ViemChainOptions {
   tokenAddress: Address
   timeoutMs?: number
   /** Override for local forks. */
-  chain?: typeof polygon
+  chain?: Chain
 }
 
 const GAS_HEADROOM_PCT = 120n
