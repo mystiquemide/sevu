@@ -6,14 +6,18 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SevuLock} from "../src/SevuLock.sol";
 
 /// @notice Deploys SevuLock for USDT0 on Polygon. The deployer gets no privileges.
-/// forge script script/Deploy.s.sol --rpc-url polygon --broadcast --interactives 1
+/// With DEPLOYER_PRIVATE_KEY set, the key is read from the environment and never appears in argv.
+/// Otherwise pass a signer flag, e.g. --account <keystore>.
+/// forge script script/Deploy.s.sol --rpc-url polygon --broadcast
 contract Deploy is Script {
     address constant USDT0 = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
 
     function run() external returns (SevuLock lock) {
         require(block.chainid == 137, "not Polygon");
         require(USDT0.code.length > 0, "USDT0 missing");
-        vm.startBroadcast();
+        uint256 key = vm.envOr("DEPLOYER_PRIVATE_KEY", uint256(0));
+        if (key != 0) vm.startBroadcast(key);
+        else vm.startBroadcast();
         lock = new SevuLock(IERC20(USDT0));
         vm.stopBroadcast();
         require(address(lock.token()) == USDT0, "token mismatch");
