@@ -85,12 +85,13 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })
     const page = await ctx.newPage()
     const signer = privateKeyToAccount(ownerKey)
+    const ownerWallet = createWalletClient({ chain, transport: http(ANVIL), account: signer })
     await page.exposeFunction('__sign', async (json) => {
-      if (reject) throw new Error('User rejected the request')
       const td = JSON.parse(json)
       const { EIP712Domain, ...types } = td.types
       return signer.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message })
     })
+    await page.exposeFunction('__send', async (tx) => ownerWallet.sendTransaction({ to: tx.to, data: tx.data }))
     await page.addInitScript(({ address, reject }) => {
       let chainId = '0x1'
       window.nimiq = {}
@@ -103,62 +104,110 @@ try {
             if (reject) { const e = new Error('User rejected the request'); e.code = 4001; throw e }
             return window.__sign(params[1])
           }
+          if (method === 'eth_sendTransaction') return window.__send(params[0])
           throw new Error(`unsupported ${method}`)
         },
       }
     }, { address: signer.address, reject })
     return page
   }
+  const shot = (page, name) => page.screenshot({ path: `${root}/app/e2e/screens/${name}.png`, fullPage: true })
+
+  async function createLock(page, amount, label) {
+    await page.getByRole('button', { name: 'Lock USDT' }).click()
+    await page.getByLabel('How much?').fill(amount)
+    if (label) await page.getByLabel(/Name it/).fill(label)
+    await page.getByRole('button', { name: 'Review' }).click()
+    await page.getByRole('button', { name: 'Seal it' }).click()
+  }
 
   // 2. Cancel flow
   {
     const page = await walletPage({ reject: true })
     await page.goto(APP)
-    await page.getByText('Sealed savings').waitFor({ timeout: 15000 })
+    await page.getByText('Saved in Sevu').waitFor({ timeout: 15000 })
     check('connects and switches 0x1 to Polygon', true)
-    await page.getByRole('button', { name: 'Lock USDT' }).click()
-    await page.getByLabel('Amount (USDT)').fill('5')
-    await page.getByRole('button', { name: 'Seal it' }).click()
+    await createLock(page, '5')
     await page.getByText('Signing cancelled.').waitFor({ timeout: 10000 })
     check('rejected signature shows cancel message, nothing sent', (await bal(lock)) === 0n)
     await page.close()
   }
 
-  // 3. Validation and the real lock
+  // 3. Full journey
   {
     const page = await walletPage()
     await page.goto(APP)
-    await page.getByText('Sealed savings').waitFor({ timeout: 15000 })
-    await page.screenshot({ path: `${root}/app/e2e/screens/1-home-empty.png` })
+    await page.getByText('Saved in Sevu').waitFor({ timeout: 15000 })
+    await page.getByText('Nothing sealed yet').waitFor({ timeout: 15000 })
+    await shot(page, '01-home-empty')
+
     await page.getByRole('button', { name: 'Lock USDT' }).click()
-    await page.getByLabel('Amount (USDT)').fill('11')
+    await page.getByLabel('How much?').fill('11')
     const capMsg = await page.getByText('per lock for now').isVisible()
-    check('amount above 10 USDT cap blocked in UI', capMsg && (await page.getByRole('button', { name: 'Seal it' }).isDisabled()))
-    await page.getByLabel('Amount (USDT)').fill('5')
-    await page.screenshot({ path: `${root}/app/e2e/screens/2-create.png` })
+    check('amount above 10 USDT cap blocked in UI', capMsg && (await page.getByRole('button', { name: 'Review' }).isDisabled()))
+    await page.getByLabel('How much?').fill('5')
+    await page.getByLabel(/Name it/).fill('Rent')
+    await shot(page, '02-create')
+    await page.getByRole('button', { name: 'Review' }).click()
+    await page.getByText('cannot be withdrawn before the unlock date').waitFor()
+    await shot(page, '03-review')
     await page.getByRole('button', { name: 'Seal it' }).click()
-    await page.getByText('Sealed. Nobody can move this').waitFor({ timeout: 60000 })
-    await page.screenshot({ path: `${root}/app/e2e/screens/3-sealed.png` })
+    await page.getByRole('heading', { name: 'Sealed' }).waitFor({ timeout: 60000 })
+    await page.waitForTimeout(1300)
+    await shot(page, '04-sealed')
     check('lock sealed through relayer', (await bal(lock)) === 5_000_000n, `contract holds ${await bal(lock)}`)
     check('owner still has 0 POL', (await pub.getBalance({ address: owner.address })) === 0n)
-    await page.getByRole('button', { name: 'Back to my locks' }).click()
-    await page.getByText('5.00 USDT, Sealed').first().waitFor({ timeout: 10000 }).catch(() => {})
-    const card = await page.getByRole('article').first().getAttribute('aria-label')
-    check('list shows the lock as Sealed', card?.includes('5.00 USDT, Sealed') ?? false, card ?? 'no card')
+    await page.getByRole('button', { name: 'Back to my savings' }).click()
+    const card = page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ })
+    await card.waitFor({ timeout: 10000 })
+    check('home lists the named lock as Sealed', true)
+    await shot(page, '05-home-locked')
+
     await page.reload()
-    await page.getByRole('article').first().waitFor({ timeout: 15000 })
-    const after = await page.getByRole('article').first().getAttribute('aria-label')
-    check('lock still listed after reload (read from chain)', after?.includes('5.00 USDT, Sealed') ?? false)
+    await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ }).waitFor({ timeout: 15000 })
     const total = await page.locator('.total').innerText()
-    check('summary total reads 5.00', total.startsWith('5.00'), total)
-    await page.screenshot({ path: `${root}/app/e2e/screens/4-home-locked.png` })
+    check('after reload: lock and label persist, total 5.00 from chain', total.startsWith('5.00'), total)
+
+    await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Sealed/ }).click()
+    await page.getByRole('button', { name: 'Try to withdraw early' }).click()
+    await page.getByText('The contract refused.').waitFor({ timeout: 15000 })
+    check('early withdrawal: contract refusal shown (FR-012)', (await bal(lock)) === 5_000_000n)
+    await shot(page, '06-refused')
+    await page.getByRole('button', { name: 'Back' }).click()
 
     await testClient.increaseTime({ seconds: 31 * 86_400 })
     await testClient.mine({ blocks: 1 })
     await page.getByRole('button', { name: 'Refresh' }).click()
-    await page.getByText('Ready to withdraw').waitFor({ timeout: 15000 })
-    check('after unlock time the lock shows Ready to withdraw', true)
-    await page.screenshot({ path: `${root}/app/e2e/screens/5-ripe.png` })
+    await page.getByText('1 lock is ready to withdraw').waitFor({ timeout: 15000 })
+    check('after unlock time the home shows ready', true)
+    await shot(page, '07-ripe')
+    await page.getByRole('button', { name: /^Rent: 5\.00 USDT, Ready/ }).click()
+    await page.getByRole('button', { name: 'Withdraw to my wallet' }).click()
+    await page.getByText('Withdrawn. 5.00 USDT is back in your wallet.').waitFor({ timeout: 60000 })
+    check('withdraw via relayer returns funds (FR-013)', (await bal(owner.address)) === 20_000_000n && (await bal(lock)) === 0n)
+    await shot(page, '08-withdrawn')
+    await page.getByRole('button', { name: 'Back' }).click()
+    await page.getByText('History (1)').waitFor({ timeout: 10000 })
+    check('withdrawn lock moves to history', true)
+
+    // Rescue: relayer not used; owner pays POL.
+    await createLock(page, '2', 'Rescue test')
+    await page.getByRole('heading', { name: 'Sealed' }).waitFor({ timeout: 60000 })
+    await page.getByRole('button', { name: 'Back to my savings' }).click()
+    await testClient.increaseTime({ seconds: 31 * 86_400 })
+    await testClient.mine({ blocks: 1 })
+    await testClient.setBalance({ address: owner.address, value: 10n ** 18n })
+    await page.getByRole('link', { name: 'Withdraw directly' }).click()
+    await page.getByRole('heading', { name: 'Withdraw directly' }).waitFor({ timeout: 15000 })
+    await page.getByRole('button', { name: 'Withdraw', exact: true }).waitFor({ timeout: 15000 })
+    await page.waitForTimeout(400)
+    await shot(page, '09-rescue')
+    const relayerNonceBefore = await pub.getTransactionCount({ address: deployer.account.address })
+    await page.getByRole('button', { name: 'Withdraw', exact: true }).click()
+    await page.getByText('No locks are ready yet.').waitFor({ timeout: 60000 })
+    const relayerNonceAfter = await pub.getTransactionCount({ address: deployer.account.address })
+    check('rescue withdraws from the owner wallet without the relayer (FR-014)',
+      (await bal(owner.address)) === 20_000_000n && relayerNonceAfter === relayerNonceBefore)
   }
   await browser.close()
 } catch (e) {

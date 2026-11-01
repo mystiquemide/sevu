@@ -1,10 +1,14 @@
-import { createPublicClient, http, type Address, type Hash } from 'viem'
+import { BaseError, ContractFunctionRevertedError, createPublicClient, encodeFunctionData, http, type Address, type Hash, type Hex } from 'viem'
 import { polygon } from 'viem/chains'
 import { config, USDT0 } from '../config'
 
 const lockAbi = [
   { type: 'function', name: 'nonces', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'locksOf', stateMutability: 'view', inputs: [{ type: 'address' }], outputs: [{ type: 'uint256[]' }] },
+  { type: 'function', name: 'withdraw', stateMutability: 'nonpayable', inputs: [{ type: 'uint256' }], outputs: [] },
+  { type: 'error', name: 'StillLocked', inputs: [{ name: 'unlockAt', type: 'uint64' }] },
+  { type: 'error', name: 'AlreadyWithdrawn', inputs: [] },
+  { type: 'error', name: 'NoLock', inputs: [] },
   {
     type: 'function', name: 'getLock', stateMutability: 'view', inputs: [{ type: 'uint256' }],
     outputs: [{ type: 'tuple', components: [
@@ -68,4 +72,38 @@ export async function waitForSuccess(hash: Hash): Promise<'success' | 'reverted'
   } catch {
     return 'unknown'
   }
+}
+
+export function withdrawCalldata(lockId: bigint): Hex {
+  return encodeFunctionData({ abi: lockAbi, functionName: 'withdraw', args: [lockId] })
+}
+
+/**
+ * Asks the contract itself, read-only, whether this withdrawal would go through right now.
+ * Returns null when it would succeed, otherwise the contract's own error name.
+ */
+export async function simulateWithdraw(from: Address, lockId: bigint): Promise<string | null> {
+  try {
+    await publicClient.simulateContract({ address: lockAddress(), abi: lockAbi, functionName: 'withdraw', args: [lockId], account: from })
+    return null
+  } catch (err) {
+    if (err instanceof BaseError) {
+      const revert = err.walk((e) => e instanceof ContractFunctionRevertedError)
+      if (revert instanceof ContractFunctionRevertedError) return revert.data?.errorName ?? 'reverted'
+    }
+    throw err
+  }
+}
+
+export async function receiptTime(hash: Hash): Promise<bigint | null> {
+  try {
+    const r = await publicClient.getTransactionReceipt({ hash })
+    return (await publicClient.getBlock({ blockNumber: r.blockNumber })).timestamp
+  } catch {
+    return null
+  }
+}
+
+export function nativeBalance(owner: Address) {
+  return publicClient.getBalance({ address: owner })
 }

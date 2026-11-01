@@ -1,6 +1,6 @@
 import { parseSignature, type Address, type Hash } from 'viem'
 import { config, SIGNATURE_TTL_SEC, USDT0 } from '../config'
-import { chainTime, lockNonce, locksOf, tokenNonce, waitForSuccess } from './chain'
+import { chainTime, lockNonce, locksOf, receiptTime, tokenNonce, waitForSuccess } from './chain'
 import { relayDeposit } from './relayer'
 import { lockIntentDomain, lockIntentTypes, permitTypes, usdt0Domain } from './typedData'
 import { signTypedData } from './wallet'
@@ -10,6 +10,8 @@ export type FlowStep = 'SIGNING_PERMIT' | 'SIGNING_INTENT' | 'SUBMITTED' | 'SEAL
 export interface FlowResult {
   step: 'SEALED' | 'FAILED' | 'UNKNOWN'
   txHash: Hash
+  lockId?: bigint
+  sealedAt?: number
 }
 
 const domainType = {
@@ -74,7 +76,9 @@ export async function createLock(
   const status = await waitForSuccess(txHash)
   if (status === 'reverted') return { step: 'FAILED', txHash }
   const after = await locksOf(owner).catch(() => null)
-  const sealed = after !== null && after.length > before.length && after.some((l) => l.unlockAt === unlockAt && l.amount === amount)
-  if (sealed) return { step: 'SEALED', txHash }
-  return { step: 'UNKNOWN', txHash }
+  const known = new Set(before.map((l) => l.id))
+  const created = after?.find((l) => !known.has(l.id) && l.unlockAt === unlockAt && l.amount === amount)
+  if (!created) return { step: 'UNKNOWN', txHash }
+  const t = await receiptTime(txHash)
+  return { step: 'SEALED', txHash, lockId: created.id, sealedAt: t === null ? undefined : Number(t) }
 }

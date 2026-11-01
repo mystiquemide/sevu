@@ -36,3 +36,11 @@ export async function signTypedData(account: Address, typedData: unknown): Promi
   const json = JSON.stringify(typedData, (_, v) => (typeof v === 'bigint' ? v.toString() : v))
   return (await p.request({ method: 'eth_signTypedData_v4', params: [account, json] })) as Hex
 }
+
+/** Sends a transaction from the user's own wallet. Used only by the rescue path; the user pays gas in POL. */
+export async function sendTransaction(from: Address, to: Address, data: Hex): Promise<Hex> {
+  const p = evmProvider()
+  if (!p) throw new Error('NO_PROVIDER')
+  await ensurePolygon(p)
+  return (await p.request({ method: 'eth_sendTransaction', params: [{ from, to, data }] })) as Hex
+}
