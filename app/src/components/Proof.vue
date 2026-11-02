@@ -9,6 +9,17 @@ defineEmits<{ back: [] }>()
 
 const stats = ref<(ProofStats & { contractTotal: bigint }) | null>(null)
 const failed = ref(false)
+// The free-locking service is the one part Sevu runs; show whether it is up. The contract works without it.
+const service = ref<{ ok: boolean; block?: string } | null>(null)
+async function checkService() {
+  try {
+    const r = await fetch(`${config.relayerUrl}/v1/health`, { signal: AbortSignal.timeout(8000) })
+    const j = (await r.json()) as { status?: string; blockNumber?: string }
+    service.value = { ok: r.ok && j.status === 'ok', block: j.blockNumber }
+  } catch {
+    service.value = { ok: false }
+  }
+}
 
 async function load() {
   failed.value = false
@@ -18,7 +29,7 @@ async function load() {
     failed.value = true
   }
 }
-onMounted(load)
+onMounted(() => { void load(); void checkService() })
 
 const scan = (a: string) => `https://polygonscan.com/address/${a}`
 const tx = (h: string) => `https://polygonscan.com/tx/${h}`
@@ -62,6 +73,14 @@ const evidence = [
       Contract totalLocked: {{ formatUsdt(stats.contractTotal) }} USDT{{ stats.contractTotal === stats.locked ? ', matches' : ', differs from the sum of locks' }}
     </p>
 
+    <div v-if="service" class="card status" role="status">
+      <span class="dot" :class="{ ok: service.ok }" aria-hidden="true" />
+      <p class="small">
+        <strong>{{ service.ok ? 'Free locking service is online' : 'Free locking service is not responding' }}</strong>
+        <span class="secondary">{{ service.ok ? `Polygon block ${Number(service.block).toLocaleString('en-US')}` : 'Existing locks are safe. You can still withdraw directly from the contract.' }}</span>
+      </p>
+    </div>
+
     <div class="group">
       <h2 class="section-title">On-chain evidence</h2>
       <a v-for="e in evidence" :key="e.title" class="card evidence" :href="e.href" target="_blank" rel="noopener">
@@ -82,6 +101,11 @@ const evidence = [
 </template>
 
 <style scoped>
+.status { display: flex; gap: 12px; align-items: flex-start; padding: 16px; }
+.status p { display: flex; flex-direction: column; }
+.status strong { font-weight: 500; }
+.dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--danger); flex: none; }
+.dot.ok { background: var(--ready); }
 .back { align-self: flex-start; }
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .stat { padding: 16px; display: flex; flex-direction: column; gap: 4px; }

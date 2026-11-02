@@ -184,7 +184,7 @@ function pickAmount(units: bigint) {
       <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
       <div class="group">
         <button class="btn" @click="seal">Seal it</button>
-        <button v-if="!pending" class="btn secondary" @click="editAgain">Change something</button>
+        <button v-if="!pending" class="btn secondary" @click="editAgain">Edit lock</button>
       </div>
     </template>
 
@@ -195,9 +195,9 @@ function pickAmount(units: bigint) {
         <button type="button" class="link" @click="emit('cancel')">Cancel</button>
       </div>
 
-      <p v-if="noFunds" class="notice plain">You need at least 1 USDT on Polygon in Nimiq Pay to create a lock.</p>
+      <p v-if="noFunds" class="notice plain">You need at least 1 USDT on Polygon to create a lock. Add USDT in Nimiq Pay, then come back.</p>
       <p v-if="pending" class="notice plain" role="status">
-        <strong>Your last lock is still signed</strong>
+        <strong>Your last lock may still go through</strong>
         It may still go through, so you can only retry the same amount and date until {{ pendingUntil }}. After that you can change them.
       </p>
 

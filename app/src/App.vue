@@ -237,7 +237,7 @@ onUnmounted(() => {
     <button class="btn secondary" :disabled="switching" @click="backToPolygon">{{ switching ? 'Switching' : 'Switch to Polygon' }}</button>
   </div>
 
-  <p v-if="!online" class="notice plain offline" role="status">You are offline. Amounts may be out of date.</p>
+  <p v-if="!online" class="notice plain offline" role="status">You are offline. Amounts may be out of date until you reconnect.</p>
 
   <main>
     <Proof v-if="showProof" @back="closeProof" />

@@ -287,6 +287,13 @@ try {
       && await page.getByRole('button', { name: /Lock #0 / }).isVisible(), total)
 
     await page.getByRole('button', { name: /^Sealed: Rent / }).click()
+    {
+      const dl = page.waitForEvent('download')
+      await page.getByRole('button', { name: 'Remind me when it opens' }).click()
+      const ics = await (await dl).createReadStream().then((st) => new Promise((r) => { let d = ''; st.on('data', (c) => (d += c)); st.on('end', () => r(d)) }))
+      check('sealed lock offers a calendar reminder at its unlock time', ics.includes('BEGIN:VEVENT') && ics.includes('DTSTART:'))
+      check('sealed lock can be shared', await page.getByRole('button', { name: 'Share this lock' }).isVisible())
+    }
     await page.getByRole('button', { name: 'Try to withdraw early' }).click()
     await page.getByText('The contract refused.').waitFor({ timeout: 15000 })
     check('early withdrawal: contract refusal shown (FR-012)', (await bal(lock)) === 5_000_000n)

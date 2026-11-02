@@ -47,7 +47,7 @@ async function rescue(l: LockRecord) {
     <button class="link plain back" @click="emit('back')"><ChevronLeft :size="18" :stroke-width="1.5" />Back</button>
     <div class="group">
       <h2 id="rescue-title" class="page-title">Withdraw directly</h2>
-      <p class="secondary">Use this if Sevu's relayer is ever down. Your wallet talks to the contract itself, so it works even if Sevu disappears. You pay a small Polygon network fee in POL.</p>
+      <p class="secondary">Use this if Sevu’s free service is ever down. Your wallet talks to the contract itself, so it works even if Sevu disappears. You pay a small Polygon network fee in POL.</p>
     </div>
 
     <p v-if="pol === 0n" class="notice plain">Your wallet has no POL for the network fee. Add a little POL on Polygon first.</p>

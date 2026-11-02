@@ -34,7 +34,9 @@ describe('amount parsing', () => {
 describe('error messages', () => {
   it('maps relayer codes to plain language', () => {
     expect(friendlyError(new RelayerError('STILL_LOCKED', 'x')).title).toBeTruthy()
-    expect(friendlyError(new RelayerError('RATE_LIMITED', 'x')).title).toBe('Daily limit reached')
+    expect(friendlyError(new RelayerError('RATE_LIMITED', 'x')).title).toBe('You have reached today’s lock limit')
+    // Users never see internal names like the relayer or the build config.
+    for (const m of Object.values(RELAYER_MESSAGES)) expect(`${m.title} ${m.action}`).not.toMatch(/relayer|configured/i)
   })
   it('treats wallet rejection as a quiet cancel', () => {
     expect(friendlyError({ code: 4001, message: 'User rejected' }).cancelled).toBe(true)
@@ -129,5 +131,23 @@ describe('NIM jars (BR-006)', () => {
     const cut = jarShares(jars, 200_00000)
     expect(cut.shortfall).toBe(true)
     expect(cut.claimed[0]! + cut.claimed[1]!).toBeLessThanOrEqual(200_00000)
+  })
+})
+
+import { googleCalendarUrl, shareText, unlockIcs } from '../src/lib/remind'
+describe('unlock reminders', () => {
+  const unlockAt = Date.UTC(2026, 10, 23, 5, 42) / 1000
+  it('builds a valid one-event calendar file at the unlock time', () => {
+    const ics = unlockIcs({ id: '0xabc-1', title: 'Rent', amount: 120_000_000n, unlockAt, now: unlockAt - 86_400 })
+    expect(ics).toContain('BEGIN:VEVENT')
+    expect(ics).toContain('DTSTART:20261123T054200Z')
+    expect(ics).toContain('SUMMARY:Sevu: Rent opens (120.00 USDT)')
+    expect(ics.split('\r\n').every((l) => l.length <= 200)).toBe(true)
+  })
+  it('links to Google Calendar with the same time', () => {
+    expect(googleCalendarUrl({ title: 'Rent', amount: 1_000_000n, unlockAt })).toContain('dates=20261123T054200Z%2F20261123T061200Z')
+  })
+  it('share text carries only public facts', () => {
+    expect(shareText({ amount: 5_000_000n, unlockAt: 'Nov 23' })).toBe('I sealed 5.00 USDT in Sevu until Nov 23. Nobody can move it early, not even Sevu. https://sevu.midelabs.xyz')
   })
 })

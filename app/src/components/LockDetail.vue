@@ -7,10 +7,34 @@ import { formatDate, formatRemaining, formatUsdt } from '../lib/format'
 import { cleanLabel, lockMeta, MAX_LABEL, saveLockMeta } from '../lib/labels'
 import { lockProgress, lockStatus } from '../lib/lockView'
 import { RelayerError, relayWithdrawal } from '../lib/relayer'
-import { ChevronLeft, ExternalLink } from 'lucide-vue-next'
+import { BellRing, ChevronLeft, ExternalLink, Share2 } from 'lucide-vue-next'
+import { googleCalendarUrl, shareText, unlockIcs } from '../lib/remind'
 import Envelope from './Envelope.vue'
 
 const props = defineProps<{ lock: LockRecord; owner: Address; now: number }>()
+
+// Reminders bring the saver back on the day; sharing says only what the chain already shows.
+const shared = ref<'idle' | 'copied' | 'failed'>('idle')
+function reminderTitle() { return cleanLabel(label.value) || `Lock #${props.lock.id}` }
+function downloadReminder() {
+  const ics = unlockIcs({ id: props.lock.key, title: reminderTitle(), amount: props.lock.amount, unlockAt: Number(props.lock.unlockAt), now: props.now })
+  const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'sevu-unlock.ics'
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+const googleUrl = computed(() => googleCalendarUrl({ title: reminderTitle(), amount: props.lock.amount, unlockAt: Number(props.lock.unlockAt) }))
+async function share() {
+  const text = shareText({ amount: props.lock.amount, unlockAt: formatDate(props.lock.unlockAt) })
+  try {
+    if (navigator.share) await navigator.share({ text })
+    else { await navigator.clipboard.writeText(text); shared.value = 'copied' }
+  } catch (e) {
+    if ((e as Error)?.name !== 'AbortError') shared.value = 'failed'
+  }
+}
 const emit = defineEmits<{ back: []; changed: []; rescue: [] }>()
 
 const status = computed(() => lockStatus(props.lock, props.now))
@@ -103,6 +127,14 @@ async function withdraw() {
       </div>
     </dl>
 
+    <div v-if="status === 'sealed'" class="extras">
+      <button class="btn secondary" @click="downloadReminder"><BellRing :size="18" :stroke-width="1.5" aria-hidden="true" />Remind me when it opens</button>
+      <a class="link" :href="googleUrl" target="_blank" rel="noopener">Add to Google Calendar instead</a>
+      <button class="btn secondary" @click="share"><Share2 :size="18" :stroke-width="1.5" aria-hidden="true" />Share this lock</button>
+      <p v-if="shared === 'copied'" class="small secondary" role="status">Copied. Paste it wherever you like.</p>
+      <p v-if="shared === 'failed'" class="small secondary" role="status">Sharing is not available here. Try again from your browser.</p>
+    </div>
+
     <div class="group">
       <template v-if="done">
         <p class="notice info" role="status">Withdrawn. {{ formatUsdt(lock.amount) }} USDT is back in your wallet.</p>
@@ -126,6 +158,8 @@ async function withdraw() {
 </template>
 
 <style scoped>
+.extras { display: flex; flex-direction: column; gap: 8px; }
+.extras .link { align-self: center; }
 .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .facts { margin: 0; display: flex; flex-direction: column; }
 .facts .row { min-height: 44px; border-bottom: 1px solid var(--line); }

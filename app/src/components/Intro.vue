@@ -12,22 +12,22 @@ const step = ref(0)
     <p class="meta count">{{ step + 1 }} of 3</p>
 
     <div v-if="step === 0" class="group">
-      <h1 class="page-title">Your rent money is one tap away from becoming new shoes.</h1>
+      <h1 class="page-title">Your rent money is one tap away from becoming new shoes</h1>
       <p class="secondary">Money in your wallet is always spendable. That's great for paying, and terrible for saving.</p>
       <Envelope :amount="120_000_000n" :unlock-at="now + 21 * 86_400" title="Rent" :now="now" :progress="0.3" />
     </div>
 
     <div v-else-if="step === 1" class="group">
-      <h1 class="page-title">Every savings lock asks you to trust someone.</h1>
+      <h1 class="page-title">Every savings lock asks you to trust someone</h1>
       <p class="secondary">Banks and savings apps hold the money for you. Whoever holds it can freeze it, lose it or move it.</p>
       <ul class="points">
-        <li>A savings app holds your money in its own wallet.</li>
-        <li>Sevu puts it in a public contract with no owner.</li>
+        <li>A savings app holds your money in its own wallet</li>
+        <li>Sevu puts it in a public contract with no owner</li>
       </ul>
     </div>
 
     <div v-else class="group">
-      <h1 class="page-title">So we built Sevu.</h1>
+      <h1 class="page-title">So we built Sevu</h1>
       <p class="secondary">Lock USDT until a date you choose. Nobody can move it early, not even us. Locking is free, and anyone can check every claim on chain.</p>
       <ul class="points">
         <li>No owner, no admin, no upgrades</li>
