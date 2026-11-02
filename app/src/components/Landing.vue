@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ArrowRight } from 'lucide-vue-next'
 import HeroPhone from './HeroPhone.vue'
+import InviteBanner from './InviteBanner.vue'
 import Postmark from './Postmark.vue'
 import Wordmark from './Wordmark.vue'
 import { formatUsdt } from '../lib/format'
@@ -62,6 +63,7 @@ const day = 86_400
     <main id="main">
     <section class="wrap hero" aria-labelledby="hero-title">
       <div class="copy">
+        <InviteBanner />
         <p class="kicker">A savings mini app for Nimiq Pay</p>
         <h1 id="hero-title">Savings nobody can touch <span class="serif">Not even us</span></h1>
         <p class="lede">Seal USDT in an envelope with a date on it. It sits in a public contract with no owner and no admin, so it opens on that date and not a minute before. Locking is free.</p>
@@ -137,6 +139,10 @@ const day = 86_400
         <p class="kicker">Get started</p>
         <h2>Three steps, about two minutes</h2>
         <p class="lede small">Sevu runs inside Nimiq Pay, a free wallet for iPhone and Android. Your keys stay on your phone.</p>
+        <div class="jarpath">
+          <p class="jartitle">Have NIM but no USDT?</p>
+          <p>Start with a NIM jar. Name a goal, like a new phone, and stake NIM toward it from Nimiq Pay. The jar fills from your real stake and earns staking rewards. It locks nothing, so you can unstake any time.</p>
+        </div>
       </div>
       <ol class="steps">
         <li>
@@ -258,6 +264,8 @@ h3 { font-size: 22px; line-height: 28px; font-weight: 500; letter-spacing: -0.01
 .slipstamp { position: absolute; right: 20px; bottom: 12px; }
 
 .start { align-items: start; }
+.jarpath { display: flex; flex-direction: column; gap: 6px; padding: 20px; border-radius: var(--r-card); background: var(--paper); box-shadow: inset 0 0 0 1px var(--paper-line); color: var(--text-2); font-size: 16px; line-height: 25px; max-width: 480px; }
+.jartitle { color: var(--text); font-weight: 500; }
 .steps { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow-sm); }
 .steps li { display: flex; gap: 20px; padding: 24px; }
 .steps li + li { border-top: 1px solid var(--line); }

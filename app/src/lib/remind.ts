@@ -35,6 +35,6 @@ export function googleCalendarUrl(opts: { title: string; amount: bigint; unlockA
 }
 
 /** Text for sharing a lock. Says only what the chain already shows publicly. */
-export function shareText(opts: { amount: bigint; unlockAt: string }): string {
-  return `I sealed ${formatUsdt(opts.amount)} USDT in Sevu until ${opts.unlockAt}. Nobody can move it early, not even Sevu. ${APP_URL}`
+export function shareText(opts: { amount: bigint; unlockAt: string; link?: string }): string {
+  return `I sealed ${formatUsdt(opts.amount)} USDT in Sevu until ${opts.unlockAt}. Nobody can move it early, not even Sevu. Try it with 1 USDT for 15 minutes: ${opts.link ?? APP_URL}`
 }

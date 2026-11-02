@@ -159,6 +159,21 @@ describe('unlock reminders', () => {
     expect(googleCalendarUrl({ title: 'Rent', amount: 1_000_000n, unlockAt })).toContain('dates=20261123T054200Z%2F20261123T061200Z')
   })
   it('share text carries only public facts', () => {
-    expect(shareText({ amount: 5_000_000n, unlockAt: 'Nov 23' })).toBe('I sealed 5.00 USDT in Sevu until Nov 23. Nobody can move it early, not even Sevu. https://sevu.midelabs.xyz')
+    expect(shareText({ amount: 5_000_000n, unlockAt: 'Nov 23', link: 'https://sevu.midelabs.xyz/?invite=x-1' })).toBe('I sealed 5.00 USDT in Sevu until Nov 23. Nobody can move it early, not even Sevu. Try it with 1 USDT for 15 minutes: https://sevu.midelabs.xyz/?invite=x-1')
+  })
+})
+
+import { inviteUrl, parseInvite } from '../src/lib/invite'
+describe('invite links', () => {
+  it('round-trips a lock reference and nothing else', async () => {
+    const { config } = await import('../src/config')
+    if (!config.lockAddress) return
+    const ref = parseInvite(new URL(inviteUrl({ contract: config.lockAddress, id: 7n })).search)
+    expect(ref).toEqual({ contract: config.lockAddress, id: 7n })
+  })
+  it('rejects contracts that are not Sevu and malformed values', () => {
+    expect(parseInvite('?invite=0x000000000000000000000000000000000000dEaD-1')).toBeNull()
+    expect(parseInvite('?invite=hello')).toBeNull()
+    expect(parseInvite('?invite=0x1500B1fB05C8CC4C432B91Bf18F7BEcdD780d170-1;alert(1)')).toBeNull()
   })
 })

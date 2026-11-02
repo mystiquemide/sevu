@@ -9,6 +9,7 @@ import { lockProgress, lockStatus } from '../lib/lockView'
 import { RelayerError, relayWithdrawal } from '../lib/relayer'
 import { BellRing, ChevronLeft, ExternalLink, Share2 } from 'lucide-vue-next'
 import { googleCalendarUrl, shareText, unlockIcs } from '../lib/remind'
+import { inviteUrl } from '../lib/invite'
 import Envelope from './Envelope.vue'
 
 const props = defineProps<{ lock: LockRecord; owner: Address; now: number }>()
@@ -27,7 +28,7 @@ function downloadReminder() {
 }
 const googleUrl = computed(() => googleCalendarUrl({ title: reminderTitle(), amount: props.lock.amount, unlockAt: Number(props.lock.unlockAt) }))
 async function share() {
-  const text = shareText({ amount: props.lock.amount, unlockAt: formatDate(props.lock.unlockAt) })
+  const text = shareText({ amount: props.lock.amount, unlockAt: formatDate(props.lock.unlockAt), link: inviteUrl({ contract: props.lock.contract, id: props.lock.id }) })
   try {
     if (navigator.share) await navigator.share({ text })
     else { await navigator.clipboard.writeText(text); shared.value = 'copied' }

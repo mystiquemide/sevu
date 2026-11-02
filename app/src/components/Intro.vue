@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import Envelope from './Envelope.vue'
+import InviteBanner from './InviteBanner.vue'
 
 defineProps<{ now: number }>()
 const emit = defineEmits<{ trial: []; proof: []; skip: [] }>()
@@ -10,6 +11,7 @@ const step = ref(0)
 <template>
   <section class="section enter intro" aria-roledescription="introduction">
     <p class="meta count">{{ step + 1 }} of 3</p>
+    <InviteBanner v-if="step === 0" />
 
     <div v-if="step === 0" class="group">
       <h1 class="page-title">Your rent money is one tap away from becoming new shoes</h1>

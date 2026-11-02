@@ -293,6 +293,16 @@ try {
       const ics = await (await dl).createReadStream().then((st) => new Promise((r) => { let d = ''; st.on('data', (c) => (d += c)); st.on('end', () => r(d)) }))
       check('sealed lock offers a calendar reminder at its unlock time', ics.includes('BEGIN:VEVENT') && ics.includes('DTSTART:'))
       check('sealed lock can be shared', await page.getByRole('button', { name: 'Share this lock' }).isVisible())
+      // Invite link: a visitor sees the friend's real lock, read from the chain, not from the URL
+      const visitor = await browser.newPage()
+      await visitor.goto(`${APP}?invite=${lock}-0`)
+      await visitor.getByText('A friend sealed 5.00 USDT until').waitFor({ timeout: 15000 })
+      await audit(visitor, '00e-invite-landing')
+      const forged = await browser.newPage()
+      await forged.goto(`${APP}?invite=0x000000000000000000000000000000000000dEaD-0`)
+      await forged.getByRole('link', { name: 'Open Sevu in Nimiq Pay' }).waitFor({ timeout: 5000 })
+      check('invite link shows the real shared lock; a foreign contract shows nothing', (await forged.getByText('A friend sealed').count()) === 0)
+      await visitor.close(); await forged.close()
     }
     await page.getByRole('button', { name: 'Try to withdraw early' }).click()
     await page.getByText('The contract refused.').waitFor({ timeout: 15000 })
