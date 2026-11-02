@@ -5,7 +5,7 @@ import { friendlyError, type FriendlyError } from '../lib/errors'
 import { jarShares, loadJars, saveJars, type Jar } from '../lib/jars'
 import { cleanLabel, MAX_LABEL } from '../lib/labels'
 import {
-  activeValidators, addStake, formatNim, LUNA, MIN_NEW_STAKE_LUNA, nimAccount, nimBalance, parseNim, shortNq, stakerOf, waitForStake,
+  activeValidators, addStake, formatNim, LUNA, MIN_NEW_STAKE_LUNA, nimAccounts, nimBalance, parseNim, shortNq, stakerOf, waitForStake,
   type Staker, type Validator,
 } from '../lib/nimiq'
 
@@ -13,6 +13,8 @@ type Stage = 'loading' | 'error' | 'list' | 'new' | 'add' | 'done'
 
 const stage = ref<Stage>('loading')
 const address = ref('')
+// When Nimiq Pay shares several accounts: each with its on-chain balance, largest first.
+const accounts = ref<{ address: string; balance: number }[]>([])
 const balance = ref(0)
 const staker = ref<Staker | null>(null)
 const jars = ref<Jar[]>([])
@@ -49,9 +51,14 @@ async function load() {
   // Each step is named so a failure on a real device says where it broke (no secrets in these messages).
   let step = 'account'
   try {
-    address.value = await nimAccount()
+    const list = await nimAccounts()
     step = 'balance'
-    balance.value = await nimBalance(address.value)
+    const withBalances = await Promise.all(list.map(async (a) => ({ address: a, balance: await nimBalance(a) })))
+    accounts.value = withBalances.sort((x, y) => y.balance - x.balance)
+    const keep = accounts.value.find((a) => a.address === address.value)
+    const chosen = keep ?? accounts.value[0]!
+    address.value = chosen.address
+    balance.value = chosen.balance
     step = 'stake'
     staker.value = await stakerOf(address.value)
     jars.value = loadJars(address.value)
@@ -138,6 +145,18 @@ onMounted(load)
           <p class="label" id="jars-title">Staked NIM</p>
           <p class="figure">{{ formatNim(staked) }}<span class="unit">NIM</span></p>
           <p class="meta">{{ formatNim(balance) }} NIM available · {{ shortNq(address) }}</p>
+        </div>
+        <div v-if="accounts.length > 1" class="group">
+          <span class="label" id="nim-account-label">Nimiq account</span>
+          <div class="stack" role="radiogroup" aria-labelledby="nim-account-label">
+            <label v-for="a in accounts" :key="a.address" class="validator" :data-on="address === a.address || undefined">
+              <input type="radio" name="nim-account" :value="a.address" :checked="address === a.address"
+                :aria-label="`Account ${shortNq(a.address)}`" @change="address = a.address; load()" />
+              <span class="dot" aria-hidden="true" />
+              <span class="mono">{{ shortNq(a.address) }}</span>
+              <span class="meta">{{ formatNim(a.balance) }} NIM</span>
+            </label>
+          </div>
         </div>
         <p class="notice plain">Jars are goals over your own Nimiq stake. They lock nothing: you can unstake any time in Nimiq Pay.</p>
       </div>

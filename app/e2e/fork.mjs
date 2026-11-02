@@ -37,6 +37,7 @@ const APP = 'http://127.0.0.1:4179'
 const NIM_RPC = 'http://127.0.0.1:8799'
 // A stand-in for the Nimiq chain: one staker record, updated when the mock Nimiq Pay wallet stakes.
 const NIM_ADDR = 'NQ12 3456 7890 ABCD EFGH JKLM NPQR STUV'
+const NIM_EMPTY = 'NQ20 2U0V 0000 0000 0000 0000 0000 8CVD'
 const VALIDATORS = [
   { address: 'NQ64 29R7 YHBJ QBE8 C9LN LE6Q S7F4 HKN7 S4DG', balance: 758_711_240_00000 },
   { address: 'NQ05 U1RF QJNH JCS1 RDQX 4M3Y 60KR K6CN 5LKC', balance: 709_095_244_00000 },
@@ -51,6 +52,7 @@ const nimServer = createServer((req, res) => {
     const { method, id } = JSON.parse(body)
     const reply = (o) => { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify({ jsonrpc: '2.0', id, ...o })) }
     if (method === 'getActiveValidators') return reply({ result: { data: VALIDATORS } })
+    if (method === 'getAccountByAddress') { const a = JSON.parse(body).params[0]; return reply({ result: { data: { address: a, balance: a === NIM_ADDR ? 500_00000 : 0, type: 'basic' } } }) }
     if (method === 'getStakerByAddress') return nimState.staker ? reply({ result: { data: nimState.staker } }) : reply({ error: { code: -32603, message: 'Internal error', data: `No staker with address: ${NIM_ADDR}` } })
     reply({ error: { code: -32601, message: 'not mocked' } })
   })
@@ -336,19 +338,22 @@ try {
       nimState.staker = { ...prev, balance: prev.balance + value, delegation: prev.delegation ?? delegation }
       return `tx-${kind}-${value}`
     })
-    await page.addInitScript((addr) => {
+    await page.addInitScript(({ addr, empty }) => {
       window.nimiq = {
-        async listAccounts() { return [addr] },
-        async getBalance() { return 500_00000 },
+        // Like the phone run: an empty account is listed first, the funded one second, and getBalance is unreliable
+        async listAccounts() { return [empty, addr] },
+        async getBalance() { return 0 },
         async sendNewStakerTransaction(tx) { return window.__nimStake('new', tx.value, tx.delegation) },
         async sendStakeTransaction(tx) { return window.__nimStake('stake', tx.value, null) },
       }
-    }, NIM_ADDR)
+    }, { addr: NIM_ADDR, empty: NIM_EMPTY })
     await page.goto(APP)
     await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
     await page.getByRole('tab', { name: 'NIM jars' }).click()
     await page.getByText('They lock nothing').waitFor({ timeout: 15000 })
     check('jars say plainly they lock nothing (BR-006)', true)
+    check('picks the funded Nimiq account and reads its balance from the chain',
+      await page.getByText('500 NIM available').isVisible() && (await page.getByRole('radio', { name: /^Account / }).count()) === 2)
     await page.getByRole('button', { name: 'New jar' }).click()
     await page.getByLabel('What is it for?').fill('New laptop')
     await page.getByLabel('Goal (NIM)').fill('1000')
