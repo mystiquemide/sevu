@@ -113,7 +113,14 @@ async function stake() {
     balance.value = await nimBalance(address.value).catch(() => balance.value)
     stage.value = 'done'
   } catch (e) {
-    error.value = friendlyError(e)
+    const f = friendlyError(e)
+    if (f.cancelled) error.value = f
+    else {
+      // Nimiq Pay's own error, so a failure on a real device says what the host refused.
+      const raw = e as { message?: string; type?: string; code?: number | string; data?: unknown }
+      const detail = [raw?.type, raw?.code, raw?.message ?? String(e)].filter((x) => x !== undefined && x !== '').join(' · ').slice(0, 200)
+      error.value = { title: 'Nimiq Pay did not stake', action: `Nothing was staked. Details: ${detail}` }
+    }
   } finally {
     working.value = false
   }
@@ -246,6 +253,8 @@ onMounted(load)
 
 <style scoped>
 .back { align-self: flex-start; }
+.meta, .mono { overflow-wrap: anywhere; }
+.validator > * { min-width: 0; }
 .jar { display: flex; flex-direction: column; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; transition: background-color 150ms var(--ease); }
 .jar:hover { background: var(--raised); }
 .jar-name { font-size: 16px; font-weight: 500; }

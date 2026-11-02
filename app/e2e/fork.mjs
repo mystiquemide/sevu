@@ -25,6 +25,13 @@ async function audit(page, screen) {
   const small = await page.evaluate(() => [...document.querySelectorAll('button, a[href], input, select, [role=button], summary')]
     .filter((el) => { const b = el.getBoundingClientRect(); const st = getComputedStyle(el); return b.width > 0 && st.visibility !== 'hidden' && (b.height < 44 && b.width < 44 || b.height < 40) })
     .map((el) => `${el.tagName.toLowerCase()} "${(el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 24)}" ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`))
+  const overflow = await page.evaluate(() => {
+    const w = document.documentElement.clientWidth
+    const wide = [...document.querySelectorAll('body *')].filter((el) => el.getBoundingClientRect().right > w + 1).slice(0, 3)
+      .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join('.')} right=${Math.round(el.getBoundingClientRect().right)}`)
+    return { scroll: document.documentElement.scrollWidth, w, wide }
+  })
+  if (overflow.scroll > overflow.w || overflow.wide.length) small.push(`OVERFLOW page ${overflow.scroll}px > ${overflow.w}px: ${overflow.wide.join(' | ')}`)
   a11y.push({ screen, violations: res, small })
 }
 const RPC = process.env.POLYGON_RPC
@@ -395,7 +402,7 @@ if (a11y.length) {
   for (const x of bad) console.log(`a11y ${x.screen}: ${JSON.stringify(x.violations)}`)
   for (const x of small) console.log(`touch ${x.screen}: ${x.small.join(' | ')}`)
   check(`no serious or critical WCAG AA issues on ${a11y.length} screens`, bad.length === 0)
-  check(`every control at least 44px on ${a11y.length} screens`, small.length === 0)
+  check(`every control at least 44px and no sideways overflow on ${a11y.length} screens`, small.length === 0)
 }
 const failed = results.filter((r) => !r.ok).length
 console.log(`\n${results.length - failed}/${results.length} checks passed`)
