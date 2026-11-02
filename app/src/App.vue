@@ -7,6 +7,7 @@ import Jars from './components/Jars.vue'
 import Envelope from './components/Envelope.vue'
 import LockDetail from './components/LockDetail.vue'
 import LockRow from './components/LockRow.vue'
+import Proof from './components/Proof.vue'
 import Rescue from './components/Rescue.vue'
 import Wordmark from './components/Wordmark.vue'
 import { chainTime, locksOf, usdtBalance, type LockRecord } from './lib/chain'
@@ -31,6 +32,17 @@ const metaVersion = ref(0)
 const wrongChain = ref(false)
 const mode = ref<'locks' | 'jars'>('locks')
 const showAccount = ref(false)
+// The proof page needs no wallet, so it opens on top of whatever state the app is in.
+const showProof = ref(typeof location !== 'undefined' && location.hash === '#/proof')
+function openProof() {
+  location.hash = '#/proof'
+  showProof.value = true
+  window.scrollTo({ top: 0 })
+}
+function closeProof() {
+  showProof.value = false
+  window.history.replaceState(null, '', location.pathname)
+}
 // The address the header shows follows the tab: Polygon for USDT locks, Nimiq for NIM jars.
 const nimAddress = ref<string | null>(null)
 const headerAddress = computed(() => (mode.value === 'jars' && view.value === 'home' ? nimAddress.value : owner.value))
@@ -79,6 +91,7 @@ async function refresh() {
 }
 
 function route() {
+  showProof.value = location.hash === '#/proof'
   if (!owner.value) return
   if (location.hash === '#/rescue') {
     view.value = 'rescue'
@@ -204,7 +217,9 @@ onUnmounted(() => {
   <p v-if="!online" class="notice plain offline" role="status">You are offline. Amounts may be out of date.</p>
 
   <main>
-    <div v-if="view === 'loading'" class="section" role="status" aria-label="Connecting to your wallet">
+    <Proof v-if="showProof" @back="closeProof" />
+
+    <div v-else-if="view === 'loading'" class="section" role="status" aria-label="Connecting to your wallet">
       <div class="skeleton" style="height: 72px; width: 60%" />
       <div class="skeleton" style="height: 232px" />
     </div>
@@ -219,6 +234,7 @@ onUnmounted(() => {
         <h2 class="section-title">Open Sevu in Nimiq Pay</h2>
         <p class="secondary small">Sevu runs inside Nimiq Pay, so your keys never leave your phone. Open Nimiq Pay, go to Mini Apps and choose Sevu.</p>
       </div>
+      <button class="link" @click="openProof">See the proof on chain</button>
     </section>
 
     <section v-else-if="view === 'error'" class="group enter">
@@ -286,6 +302,7 @@ onUnmounted(() => {
       <footer class="foot">
         <p class="meta">No owner. No admin. No upgrades.</p>
         <a class="link" href="#/rescue" @click.prevent="go('rescue')">Withdraw directly</a>
+        <a class="link" href="#/proof" @click.prevent="openProof">Proof</a>
       </footer>
     </section>
   </main>
