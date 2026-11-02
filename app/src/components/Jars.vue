@@ -114,9 +114,7 @@ async function stake() {
   const target = staked.value + value
   try {
     const result = await addStake(value, firstTime.value ? { delegation: delegation.value } : null)
-    // Record the jar's share once Nimiq Pay has sent it; the chain decides what is actually staked.
-    jars.value = jars.value.map((j) => (j.id === active.value!.id ? { ...j, added: j.added + value } : j))
-    saveJars(address.value, jars.value)
+    const jarId = active.value!.id
     // Show "Sent" right away; confirmation runs in the background and never blocks the screen.
     txHash.value = typeof result === 'string' && /^[0-9a-f]{64}$/i.test(result) ? result : null
     confirmed.value = null
@@ -124,6 +122,11 @@ async function stake() {
     const watch = stakerAddress.value || address.value
     void waitForStakeAny(stakerAddress.value ? [stakerAddress.value] : accounts.value.map((a) => a.address), target).then(async (ok) => {
       confirmed.value = ok
+      // Credit the jar only once the chain shows the stake. A refused stake adds nothing.
+      if (ok) {
+        jars.value = jars.value.map((j) => (j.id === jarId ? { ...j, added: j.added + value } : j))
+        saveJars(address.value, jars.value)
+      }
       staker.value = (await stakerOf(watch).catch(() => null)) ?? staker.value
       balance.value = await nimBalance(address.value).catch(() => balance.value)
     })
@@ -189,8 +192,8 @@ onMounted(load)
       </div>
 
       <p v-if="shares.shortfall" class="notice plain" role="status">
-        <strong>Less is staked than your jars add up to</strong>
-        Some stake was moved outside Sevu. Jars show their share of what is really staked.
+        <strong>Your jars add up to more than is staked</strong>
+        Jars show their share of what is really staked.
       </p>
 
       <div class="group">
