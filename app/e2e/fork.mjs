@@ -49,7 +49,7 @@ const VALIDATORS = [
   { address: 'NQ64 29R7 YHBJ QBE8 C9LN LE6Q S7F4 HKN7 S4DG', balance: 758_711_240_00000 },
   { address: 'NQ05 U1RF QJNH JCS1 RDQX 4M3Y 60KR K6CN 5LKC', balance: 709_095_244_00000 },
 ]
-const nimState = { staker: null }
+const nimState = { staker: null, kinds: [] }
 const nimServer = createServer((req, res) => {
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' }
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end() }
@@ -60,7 +60,8 @@ const nimServer = createServer((req, res) => {
     const reply = (o) => { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify({ jsonrpc: '2.0', id, ...o })) }
     if (method === 'getActiveValidators') return reply({ result: { data: VALIDATORS } })
     if (method === 'getAccountByAddress') { const a = JSON.parse(body).params[0]; return reply({ result: { data: { address: a, balance: a === NIM_ADDR ? 500_00000 : 0, type: 'basic' } } }) }
-    if (method === 'getStakerByAddress') return nimState.staker ? reply({ result: { data: nimState.staker } }) : reply({ error: { code: -32603, message: 'Internal error', data: `No staker with address: ${NIM_ADDR}` } })
+    // Like mainnet: NIM sits in one listed account, the staker is recorded under the other (the signer)
+    if (method === 'getStakerByAddress') return nimState.staker && JSON.parse(body).params[0] === NIM_EMPTY ? reply({ result: { data: nimState.staker } }) : reply({ error: { code: -32603, message: 'Internal error', data: `No staker with address: ${NIM_ADDR}` } })
     reply({ error: { code: -32601, message: 'not mocked' } })
   })
 }).listen(8799, '127.0.0.1')
@@ -341,6 +342,7 @@ try {
   {
     const page = await walletPage()
     await page.exposeFunction('__nimStake', (kind, value, delegation) => {
+      nimState.kinds.push(kind)
       const prev = nimState.staker ?? { balance: 0, inactiveBalance: 0, retiredBalance: 0, delegation }
       nimState.staker = { ...prev, balance: prev.balance + value, delegation: prev.delegation ?? delegation }
       return `tx-${kind}-${value}`
@@ -397,6 +399,15 @@ try {
     check('jar progress reads 150 of 1,000 NIM (15%)', await page.getByText('15%').isVisible())
     await shot(page, '13-jars')
     await audit(page, '13-jars')
+    // A second stake must add to the existing staker, not try to create it again (mainnet 04:19 UTC bug)
+    await page.getByRole('button', { name: /New laptop/ }).click()
+    await page.getByLabel('Stake toward it (NIM)').fill('50')
+    check('with a staker on another listed account, no validator choice is asked', (await page.getByRole('radio', { name: /^Validator / }).count()) === 0)
+    await page.getByRole('button', { name: 'Stake' }).click()
+    await page.getByRole('heading', { name: 'Staked' }).waitFor({ timeout: 20000 })
+    check('second stake uses add stake, not create staker', nimState.kinds.at(-1) === 'stake' && nimState.staker?.balance === 200_00000)
+    await page.getByRole('button', { name: 'Back to jars' }).click()
+    await page.getByText('200 of 1,000 NIM').waitFor({ timeout: 15000 })
     // Stake moved outside Sevu: jars must not claim more than the chain shows
     nimState.staker = { ...nimState.staker, balance: 100_00000 }
     await page.getByRole('tab', { name: 'USDT locks' }).click()

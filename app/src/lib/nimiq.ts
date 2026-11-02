@@ -101,6 +101,18 @@ export function isNewStakerHostBug(e: unknown): boolean {
   return /expected instance of Address/i.test(String((e as { message?: string })?.message ?? e))
 }
 
+/** Polls every given account until one of them has active stake of at least `target`, up to about a minute. */
+export async function waitForStakeAny(addresses: string[], target: number): Promise<boolean> {
+  for (let i = 0; i < 30; i++) {
+    for (const a of addresses) {
+      const st = await stakerOf(a).catch(() => null)
+      if (st && st.balance >= target) return true
+    }
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+  return false
+}
+
 /** Polls the chain until active stake reaches at least `target`, up to about a minute. */
 export async function waitForStake(address: string, target: number): Promise<boolean> {
   // Nimiq makes a block every second; check every 2 s for about a minute.

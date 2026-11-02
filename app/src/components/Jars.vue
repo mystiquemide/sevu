@@ -5,7 +5,7 @@ import { friendlyError, type FriendlyError } from '../lib/errors'
 import { jarShares, loadJars, saveJars, type Jar } from '../lib/jars'
 import { cleanLabel, MAX_LABEL } from '../lib/labels'
 import {
-  activeValidators, addStake, formatNim, isNewStakerHostBug, LUNA, MIN_NEW_STAKE_LUNA, nimAccounts, nimBalance, parseNim, shortNq, stakerOf, waitForStake,
+  activeValidators, addStake, waitForStakeAny, formatNim, isNewStakerHostBug, LUNA, MIN_NEW_STAKE_LUNA, nimAccounts, nimBalance, parseNim, shortNq, stakerOf,
   type Staker, type Validator,
 } from '../lib/nimiq'
 
@@ -15,6 +15,8 @@ type Stage = 'loading' | 'error' | 'list' | 'new' | 'add' | 'done'
 
 const stage = ref<Stage>('loading')
 const address = ref('')
+// Where the staker lives. Nimiq Pay can fund stakes from one listed account while the staker belongs to another.
+const stakerAddress = ref('')
 // When Nimiq Pay shares several accounts: each with its on-chain balance, largest first.
 const accounts = ref<{ address: string; balance: number }[]>([])
 const balance = ref(0)
@@ -64,7 +66,10 @@ async function load() {
     emit('account', chosen.address)
     balance.value = chosen.balance
     step = 'stake'
-    staker.value = await stakerOf(address.value)
+    const stakers = await Promise.all(accounts.value.map(async (a) => ({ address: a.address, staker: await stakerOf(a.address) })))
+    const found = stakers.filter((x) => x.staker).sort((x, y) => y.staker!.balance - x.staker!.balance)[0]
+    staker.value = found?.staker ?? null
+    stakerAddress.value = found?.address ?? ''
     jars.value = loadJars(address.value)
     stage.value = 'list'
   } catch (e) {
@@ -116,9 +121,10 @@ async function stake() {
     txHash.value = typeof result === 'string' && /^[0-9a-f]{64}$/i.test(result) ? result : null
     confirmed.value = null
     stage.value = 'done'
-    void waitForStake(address.value, target).then(async (ok) => {
+    const watch = stakerAddress.value || address.value
+    void waitForStakeAny(stakerAddress.value ? [stakerAddress.value] : accounts.value.map((a) => a.address), target).then(async (ok) => {
       confirmed.value = ok
-      staker.value = await stakerOf(address.value).catch(() => staker.value)
+      staker.value = (await stakerOf(watch).catch(() => null)) ?? staker.value
       balance.value = await nimBalance(address.value).catch(() => balance.value)
     })
   } catch (e) {
@@ -259,7 +265,7 @@ onMounted(load)
         {{ confirmed === true
           ? `Your stake is now ${formatNim(staked)} NIM on Nimiq. ${active.name} moved closer to its goal.`
           : confirmed === false
-            ? 'Nimiq Pay sent it, but the network has not shown it yet. It usually appears within a minute. Your jars update when it does.'
+            ? 'The network has not added this stake. It may have been refused, so no NIM moved for it. Check your jars before trying again.'
             : 'Confirming on the Nimiq network. You can go back to your jars, this finishes on its own.' }}
       </p>
       <a v-if="txHash" class="link" :href="`https://nimiq.watch/#${txHash}`" target="_blank" rel="noopener">View on Nimiq Watch</a>
