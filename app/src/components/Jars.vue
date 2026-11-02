@@ -28,6 +28,7 @@ const validators = ref<Validator[]>([])
 const delegation = ref('')
 const working = ref(false)
 const confirmed = ref<boolean | null>(null)
+const txHash = ref<string | null>(null)
 
 const staked = computed(() => staker.value?.balance ?? 0)
 const shares = computed(() => jarShares(jars.value, staked.value))
@@ -104,14 +105,19 @@ async function stake() {
   const value = addValue.value
   const target = staked.value + value
   try {
-    await addStake(value, firstTime.value ? { delegation: delegation.value } : null)
+    const result = await addStake(value, firstTime.value ? { delegation: delegation.value } : null)
     // Record the jar's share once Nimiq Pay has sent it; the chain decides what is actually staked.
     jars.value = jars.value.map((j) => (j.id === active.value!.id ? { ...j, added: j.added + value } : j))
     saveJars(address.value, jars.value)
-    confirmed.value = await waitForStake(address.value, target)
-    staker.value = await stakerOf(address.value).catch(() => staker.value)
-    balance.value = await nimBalance(address.value).catch(() => balance.value)
+    // Show "Sent" right away; confirmation runs in the background and never blocks the screen.
+    txHash.value = typeof result === 'string' && /^[0-9a-f]{64}$/i.test(result) ? result : null
+    confirmed.value = null
     stage.value = 'done'
+    void waitForStake(address.value, target).then(async (ok) => {
+      confirmed.value = ok
+      staker.value = await stakerOf(address.value).catch(() => staker.value)
+      balance.value = await nimBalance(address.value).catch(() => balance.value)
+    })
   } catch (e) {
     const f = friendlyError(e)
     if (f.cancelled) error.value = f
@@ -240,17 +246,20 @@ onMounted(load)
 
       <p class="secondary small">Nimiq Pay asks you to confirm. The NIM stays yours and staked in your own account.</p>
       <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
-      <button class="btn" type="submit" :disabled="!canAdd">{{ working ? 'Waiting for Nimiq' : 'Stake' }}</button>
+      <button class="btn" type="submit" :disabled="!canAdd">{{ working ? 'Confirm in Nimiq Pay' : 'Stake' }}</button>
     </form>
 
     <!-- Done -->
     <div v-else-if="stage === 'done' && active" class="section">
       <h2 class="page-title">{{ confirmed ? 'Staked' : 'Sent to Nimiq' }}</h2>
-      <p class="notice" :class="confirmed ? 'info' : 'plain'" role="status">
-        {{ confirmed
+      <p class="notice" :class="confirmed ? 'info' : 'plain'" role="status" aria-live="polite">
+        {{ confirmed === true
           ? `Your stake is now ${formatNim(staked)} NIM on Nimiq. ${active.name} moved closer to its goal.`
-          : 'Nimiq Pay sent it, but the chain has not shown it yet. Refresh jars in a minute.' }}
+          : confirmed === false
+            ? 'Nimiq Pay sent it, but the network has not shown it yet. It usually appears within a minute. Your jars update when it does.'
+            : 'Confirming on the Nimiq network. You can go back to your jars, this finishes on its own.' }}
       </p>
+      <a v-if="txHash" class="link" :href="`https://nimiq.watch/#${txHash}`" target="_blank" rel="noopener">View on Nimiq Watch</a>
       <button class="btn ink" @click="load">Back to jars</button>
     </div>
   </section>

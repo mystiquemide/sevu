@@ -103,10 +103,11 @@ export function isNewStakerHostBug(e: unknown): boolean {
 
 /** Polls the chain until active stake reaches at least `target`, up to about a minute. */
 export async function waitForStake(address: string, target: number): Promise<boolean> {
-  for (let i = 0; i < 20; i++) {
+  // Nimiq makes a block every second; check every 2 s for about a minute.
+  for (let i = 0; i < 30; i++) {
     const s = await stakerOf(address).catch(() => null)
     if (s && s.balance >= target) return true
-    await new Promise((r) => setTimeout(r, 3000))
+    await new Promise((r) => setTimeout(r, 2000))
   }
   return false
 }
