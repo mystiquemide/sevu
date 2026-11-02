@@ -144,7 +144,7 @@ try {
   {
     const page = await browser.newPage()
     await page.goto(APP)
-    await page.getByText('Open Sevu in Nimiq Pay').waitFor({ timeout: 5000 })
+    await page.getByRole('link', { name: 'Open Sevu in Nimiq Pay' }).waitFor({ timeout: 5000 })
     await audit(page, '00-outside')
     check('outside Nimiq Pay shows guidance', true)
     await page.close()
@@ -205,7 +205,7 @@ try {
     const page = await browser.newPage()
     await page.addInitScript(() => { window.ethereum = { request: async () => [], on() {}, removeListener() {} } })
     await page.goto(APP)
-    await page.getByText('Open Sevu in Nimiq Pay').waitFor({ timeout: 5000 })
+    await page.getByRole('link', { name: 'Open Sevu in Nimiq Pay' }).waitFor({ timeout: 5000 })
     check('browser wallet without Nimiq Pay shows the landing page', true)
     await page.close()
   }

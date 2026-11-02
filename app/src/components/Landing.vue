@@ -6,6 +6,7 @@ import Postmark from './Postmark.vue'
 import Wordmark from './Wordmark.vue'
 import { formatUsdt } from '../lib/format'
 import { readProof, type ProofStats } from '../lib/proof'
+import { config } from '../config'
 
 const props = defineProps<{ now: number }>()
 defineEmits<{ proof: [] }>()
@@ -15,9 +16,21 @@ const APP_STORE = 'https://apps.apple.com/app/id6471844738'
 const PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.nimiq.pay'
 const OPEN_IN_PAY = `https://nimpay.app/miniapps/open/${typeof location !== 'undefined' ? location.host : 'sevu.midelabs.xyz'}`
 
+const CONTRACT = `https://polygonscan.com/address/${config.lockAddress}`
+const SOURCE = `https://repo.sourcify.dev/137/${config.lockAddress}`
+
+// Desktop visitors can't open a phone app, so they get a QR code to scan instead.
+const qr = ref<string | null>(null)
+async function makeQr() {
+  if (typeof window === 'undefined' || !window.matchMedia('(min-width: 861px) and (pointer: fine)').matches) return
+  const { toDataURL } = await import('qrcode')
+  qr.value = await toDataURL(OPEN_IN_PAY, { margin: 1, width: 224, color: { dark: '#171717', light: '#ffffff' } })
+}
+
 const stats = ref<ProofStats | null>(null)
 const failed = ref(false)
 onMounted(async () => {
+  void makeQr()
   try {
     stats.value = await readProof()
   } catch {
@@ -36,6 +49,7 @@ const day = 86_400
 
 <template>
   <div class="landing">
+    <a class="skip" href="#main">Skip to content</a>
     <nav class="wrap nav" aria-label="Main">
       <Wordmark />
       <div class="navlinks">
@@ -45,10 +59,11 @@ const day = 86_400
       </div>
     </nav>
 
-    <header class="wrap hero">
+    <main id="main">
+    <section class="wrap hero" aria-labelledby="hero-title">
       <div class="copy">
         <p class="kicker">A savings mini app for Nimiq Pay</p>
-        <h1>Savings nobody can touch<span class="serif">Not even us</span></h1>
+        <h1 id="hero-title">Savings nobody can touch <span class="serif">Not even us</span></h1>
         <p class="lede">Seal USDT in an envelope with a date on it. It sits in a public contract with no owner and no admin, so it opens on that date and not a minute before. Locking is free.</p>
         <div class="ctas">
           <a class="btn cta" href="#start">Start saving <ArrowRight :size="18" aria-hidden="true" /></a>
@@ -56,9 +71,9 @@ const day = 86_400
         </div>
       </div>
       <HeroPhone class="art" :now="props.now" />
-    </header>
+    </section>
 
-    <section class="dark">
+    <section class="dark" aria-label="Why Sevu">
       <div class="wrap split">
         <div class="col">
           <p class="quote">“I’ll just borrow it from savings”</p>
@@ -148,12 +163,16 @@ const day = 86_400
             <h3>Open Sevu</h3>
             <p>Tap below on your phone, or find Sevu in the Mini Apps section of Nimiq Pay.</p>
             <a class="btn fit" :href="OPEN_IN_PAY">Open Sevu in Nimiq Pay</a>
+            <div v-if="qr" class="qr">
+              <img :src="qr" alt="QR code that opens Sevu in Nimiq Pay" width="112" height="112" />
+              <p class="meta">On a computer? Scan this with your phone camera to open Sevu in Nimiq Pay.</p>
+            </div>
           </div>
         </li>
       </ol>
     </section>
 
-    <section class="close">
+    <section class="close" aria-label="Start saving">
       <div class="wrap closing">
         <Postmark :date="props.now + 365 * day" :size="120" decorative />
         <p class="big">Future you says thanks</p>
@@ -162,9 +181,15 @@ const day = 86_400
       </div>
     </section>
 
+    </main>
+
     <footer class="wrap foot">
       <span class="meta">No owner. No admin. No upgrades.</span>
-      <span class="meta">Built for the Nimiq Mini Apps Competition</span>
+      <span class="footlinks">
+        <a class="meta" href="#/proof" @click.prevent="$emit('proof')">Proof page</a>
+        <a class="meta" :href="CONTRACT" target="_blank" rel="noopener">Contract on Polygonscan</a>
+        <a class="meta" :href="SOURCE" target="_blank" rel="noopener">Verified source</a>
+      </span>
     </footer>
   </div>
 </template>
@@ -249,6 +274,13 @@ h3 { font-size: 22px; line-height: 28px; font-weight: 500; letter-spacing: -0.01
 .big { font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(48px, 6vw, 80px); line-height: 1.02; margin-top: 8px; }
 .sub { color: var(--text-2); font-size: 18px; margin-bottom: 8px; }
 .closing .fit { align-self: center; }
+.skip { position: absolute; left: 16px; top: -60px; z-index: 10; padding: 10px 16px; border-radius: var(--r-control); background: var(--text); color: #fff; text-decoration: none; }
+.skip:focus { top: 12px; }
+.footlinks { display: flex; gap: 20px; flex-wrap: wrap; }
+.footlinks a { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
+.footlinks a:hover { color: var(--text); }
+.qr { display: flex; gap: 16px; align-items: center; margin-top: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+.qr img { border-radius: 8px; box-shadow: 0 0 0 1px var(--line); flex: none; }
 .foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 32px; padding-bottom: 40px; border-top: 1px solid var(--line); }
 
 @media (max-width: 860px) {
