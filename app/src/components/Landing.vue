@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ArrowRight, Download, UserRound, LayoutGrid } from 'lucide-vue-next'
-import Envelope from './Envelope.vue'
+import { computed, onMounted, ref } from 'vue'
+import { ArrowRight } from 'lucide-vue-next'
+import HeroPhone from './HeroPhone.vue'
+import Postmark from './Postmark.vue'
 import Wordmark from './Wordmark.vue'
 import { formatUsdt } from '../lib/format'
 import { readProof, type ProofStats } from '../lib/proof'
@@ -15,110 +16,149 @@ const PLAY_STORE = 'https://play.google.com/store/apps/details?id=com.nimiq.pay'
 const OPEN_IN_PAY = `https://nimpay.app/miniapps/open/${typeof location !== 'undefined' ? location.host : 'sevu.midelabs.xyz'}`
 
 const stats = ref<ProofStats | null>(null)
+const failed = ref(false)
 onMounted(async () => {
   try {
     stats.value = await readProof()
   } catch {
-    // The proof section still links to the live page; the numbers just stay hidden.
+    failed.value = true
   }
 })
-
+const ledger = computed(() => [
+  { k: 'Locks', v: stats.value ? String(stats.value.locks) : null },
+  { k: 'Savers', v: stats.value ? String(stats.value.owners) : null },
+  { k: 'Locked now', v: stats.value ? `${formatUsdt(stats.value.locked)} USDT` : null },
+  { k: 'Withdrawn', v: stats.value ? `${formatUsdt(stats.value.withdrawn)} USDT` : null },
+  { k: 'Admin keys', v: '0', wax: true },
+])
 const day = 86_400
-const steps = [
-  { icon: Download, title: 'Get Nimiq Pay', body: 'Free on iPhone and Android. It is the wallet Sevu runs inside.' },
-  { icon: UserRound, title: 'Create your account', body: 'Nimiq Pay sets up your wallet on your phone. Your keys never leave it.' },
-  { icon: LayoutGrid, title: 'Open Sevu', body: 'Tap the button below on your phone, or find Sevu in the Mini Apps section of Nimiq Pay.' },
-]
 </script>
 
 <template>
   <div class="landing">
-    <nav class="wrap nav">
+    <nav class="wrap nav" aria-label="Main">
       <Wordmark />
       <div class="navlinks">
         <a href="#how">How it works</a>
-        <a href="#proof" @click.prevent="$emit('proof')">Proof</a>
-        <a class="pill" href="#start">Get started</a>
+        <a href="#proof">Proof</a>
+        <a class="navbtn" href="#start">Get started</a>
       </div>
     </nav>
 
     <header class="wrap hero">
       <div class="copy">
-        <p class="eyebrow">A savings mini app for Nimiq Pay</p>
-        <h1>Savings nobody can touch. <em>Not even us.</em></h1>
+        <p class="kicker">A savings mini app for Nimiq Pay</p>
+        <h1>Savings nobody can touch<span class="serif">Not even us</span></h1>
         <p class="lede">Seal USDT in an envelope with a date on it. It sits in a public contract with no owner and no admin, so it opens on that date and not a minute before. Locking is free.</p>
         <div class="ctas">
           <a class="btn cta" href="#start">Start saving <ArrowRight :size="18" aria-hidden="true" /></a>
-          <button class="btn secondary cta" @click="$emit('proof')">See the proof on chain</button>
+          <a class="btn secondary cta" href="#proof">See the proof</a>
         </div>
-        <p class="meta">No gas · No sign-up form · Keys stay on your phone</p>
       </div>
-      <div class="art" aria-hidden="true">
-        <div class="env back"><Envelope :amount="350_000_000n" :unlock-at="props.now + 92 * day" title="School fees" :now="props.now" :progress="0.12" /></div>
-        <div class="env front"><Envelope :amount="120_000_000n" :unlock-at="props.now + 21 * day" title="Rent" :now="props.now" :progress="0.32" /></div>
-      </div>
+      <HeroPhone class="art" :now="props.now" />
     </header>
 
     <section class="dark">
-      <div class="wrap stackl">
-        <p class="quote">“I’ll just borrow it from savings.”</p>
-        <p class="body light">Money in your wallet is always one tap from being spent. Savings apps fix that by holding your money for you, which means trusting whoever holds it not to freeze it, lose it or move it.</p>
-        <div class="compare">
-          <div class="cmp"><p class="k">Wallet</p><p class="v">Always spendable</p></div>
-          <div class="cmp"><p class="k">Savings app</p><p class="v">Holds your money in its own wallet</p></div>
-          <div class="cmp us"><p class="k">Sevu</p><p class="v">Public contract. No owner. Opens on your date.</p></div>
+      <div class="wrap split">
+        <div class="col">
+          <p class="quote">“I’ll just borrow it from savings”</p>
+          <p class="body">Money in your wallet is always one tap from being spent. Savings apps fix that by holding your money for you, which means trusting whoever holds it not to freeze it, lose it or move it.</p>
         </div>
+        <dl class="compare">
+          <div><dt>Wallet</dt><dd>Always spendable</dd></div>
+          <div><dt>Savings app</dt><dd>Holds your money in its own wallet</dd></div>
+          <div class="us"><dt>Sevu</dt><dd>A public contract with no owner. Opens on your date</dd></div>
+        </dl>
       </div>
     </section>
 
-    <section id="how" class="wrap stackl">
-      <p class="kicker">How it works</p>
-      <h2>Seal it, wait, open it.</h2>
-      <ol class="cards three">
-        <li class="card"><span class="n">01</span><h3>Seal</h3><p>Pick an amount and an unlock date. Sign once in Nimiq Pay. We pay the gas.</p></li>
-        <li class="card"><span class="n">02</span><h3>Wait</h3><p>Your envelope counts down. Nobody can open it early, not you on a bad day and not us.</p></li>
-        <li class="card"><span class="n">03</span><h3>Open</h3><p>On the date, one tap sends it back to your wallet. Only ever to you.</p></li>
+    <section id="how" class="wrap block">
+      <div class="head">
+        <p class="kicker">How it works</p>
+        <h2>Seal it, wait, open it</h2>
+      </div>
+      <ol class="timeline">
+        <li><span class="dot">1</span><h3>Seal</h3><p>Pick an amount and an unlock date. Sign once in Nimiq Pay. We pay the gas.</p></li>
+        <li><span class="dot">2</span><h3>Wait</h3><p>Your envelope counts down. Nobody can open it early, not you on a bad day and not us.</p></li>
+        <li><span class="dot">3</span><h3>Open</h3><p>On the date, one tap sends it back to your wallet. Only ever to you.</p></li>
       </ol>
     </section>
 
     <section id="proof" class="paper">
-      <div class="wrap stackl">
-        <p class="kicker">Don’t trust us. Check.</p>
-        <h2>Every claim is on chain.</h2>
-        <div class="stats">
-          <div class="card stat"><p>Locks</p><strong>{{ stats ? stats.locks : '…' }}</strong></div>
-          <div class="card stat"><p>Savers</p><strong>{{ stats ? stats.owners : '…' }}</strong></div>
-          <div class="card stat"><p>Locked now</p><strong>{{ stats ? `${formatUsdt(stats.locked)} USDT` : '…' }}</strong></div>
-          <div class="card stat"><p>Admin keys</p><strong class="wax">0</strong></div>
+      <div class="wrap split">
+        <div class="col">
+          <p class="kicker">Don’t trust us, check</p>
+          <h2>Every claim is on chain</h2>
+          <ul class="facts">
+            <li>Contract source matched on Sourcify, with no owner, pause or upgrade function</li>
+            <li>First gasless lock sent from Nimiq Pay on Polygon mainnet</li>
+            <li>An early withdrawal refused by the contract itself</li>
+          </ul>
+          <button class="btn secondary fit" @click="$emit('proof')">Open the live proof page</button>
         </div>
-        <p class="meta">Read live from Polygon each time this page loads.</p>
-        <button class="btn secondary fit" @click="$emit('proof')">Open the live proof page</button>
+        <figure class="slip">
+          <figcaption class="sliphead">
+            <span>Sevu ledger</span>
+            <span>Polygon · live</span>
+          </figcaption>
+          <dl>
+            <div v-for="r in ledger" :key="r.k" class="line">
+              <dt>{{ r.k }}</dt>
+              <span class="leader" aria-hidden="true" />
+              <dd :class="{ wax: r.wax }">
+                <template v-if="r.v">{{ r.v }}</template>
+                <span v-else class="pending">{{ failed ? 'unavailable' : 'reading' }}</span>
+              </dd>
+            </div>
+          </dl>
+          <p class="slipfoot">Read from the contracts each time this page loads</p>
+          <div class="slipstamp"><Postmark :date="props.now" :size="88" tone="ready" decorative /></div>
+        </figure>
       </div>
     </section>
 
-    <section id="start" class="wrap stackl">
-      <p class="kicker">Get started</p>
-      <h2>Three steps. About two minutes.</h2>
-      <ol class="cards three">
-        <li v-for="(s, i) in steps" :key="s.title" class="card step">
-          <span class="ico"><component :is="s.icon" :size="20" aria-hidden="true" /></span>
-          <span class="n">Step {{ i + 1 }}</span>
-          <h3>{{ s.title }}</h3>
-          <p>{{ s.body }}</p>
-          <div v-if="i === 0" class="stores">
-            <a class="store" :href="APP_STORE" target="_blank" rel="noopener">App Store</a>
-            <a class="store" :href="PLAY_STORE" target="_blank" rel="noopener">Google Play</a>
+    <section id="start" class="wrap block split start">
+      <div class="col">
+        <p class="kicker">Get started</p>
+        <h2>Three steps, about two minutes</h2>
+        <p class="lede small">Sevu runs inside Nimiq Pay, a free wallet for iPhone and Android. Your keys stay on your phone.</p>
+      </div>
+      <ol class="steps">
+        <li>
+          <span class="dot">1</span>
+          <div class="stepbody">
+            <h3>Get Nimiq Pay</h3>
+            <p>Download it from your app store.</p>
+            <div class="stores">
+              <a class="badge" :href="APP_STORE" target="_blank" rel="noopener"><img src="/badges/app-store.svg" alt="Download on the App Store" width="135" height="45" /></a>
+              <a class="badge gp" :href="PLAY_STORE" target="_blank" rel="noopener"><img src="/badges/google-play.png" alt="Get it on Google Play" width="152" height="59" /></a>
+            </div>
           </div>
-          <a v-if="i === 2" class="btn" :href="OPEN_IN_PAY">Open Sevu in Nimiq Pay</a>
+        </li>
+        <li>
+          <span class="dot">2</span>
+          <div class="stepbody">
+            <h3>Create your account</h3>
+            <p>Nimiq Pay sets up your wallet on your phone. Nothing to fill in for Sevu.</p>
+          </div>
+        </li>
+        <li>
+          <span class="dot">3</span>
+          <div class="stepbody">
+            <h3>Open Sevu</h3>
+            <p>Tap below on your phone, or find Sevu in the Mini Apps section of Nimiq Pay.</p>
+            <a class="btn fit" :href="OPEN_IN_PAY">Open Sevu in Nimiq Pay</a>
+          </div>
         </li>
       </ol>
     </section>
 
     <section class="close">
-      <div class="wrap center">
-        <p class="big">Future you says thanks.</p>
+      <div class="wrap closing">
+        <Postmark :date="props.now + 365 * day" :size="120" decorative />
+        <p class="big">Future you says thanks</p>
         <p class="sub">Present you can’t touch it. That’s the point.</p>
-        <a class="btn white" href="#start">Start saving</a>
+        <a class="btn fit" href="#start">Start saving</a>
       </div>
     </section>
 
@@ -130,70 +170,103 @@ const steps = [
 </template>
 
 <style scoped>
-.landing { width: 100vw; margin-left: calc(50% - 50vw); margin-top: calc(-1 * (env(safe-area-inset-top) + 16px)); background: #f6f2ea; }
+/* Landing surfaces lean warmer than the app: the post office counter. Chrome stays graphite, the envelopes carry the color. */
+.landing { --counter: #f4f0e8; --ink: #1d1b18; width: 100vw; margin-left: calc(50% - 50vw); margin-top: calc(-1 * (env(safe-area-inset-top) + 16px)); background: var(--counter); }
 .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-.nav { display: flex; align-items: center; justify-content: space-between; min-height: 76px; }
-.navlinks { display: flex; align-items: center; gap: 24px; }
-.navlinks a { text-decoration: none; color: var(--text-2); min-height: 44px; display: inline-flex; align-items: center; }
-.navlinks .pill { padding: 0 16px; border-radius: var(--r-control); background: var(--wax); color: #fff; }
-.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding-top: 40px; padding-bottom: 96px; }
-.eyebrow { display: inline-block; font-family: var(--mono); font-size: 13px; color: var(--wax); background: var(--wax-soft); padding: 4px 12px; border-radius: 99px; }
+.nav { display: flex; align-items: center; justify-content: space-between; min-height: 80px; }
+.navlinks { display: flex; align-items: center; gap: 28px; }
+.navlinks a { text-decoration: none; color: var(--text-2); min-height: 44px; display: inline-flex; align-items: center; transition: color 150ms var(--ease); }
+.navlinks a:hover { color: var(--text); }
+.navlinks .navbtn { padding: 0 16px; border-radius: var(--r-control); background: var(--text); color: #fff; }
+.navlinks .navbtn:hover { color: #fff; background: #000; }
+
+.kicker { font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--wax-press); }
+.serif { display: block; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; color: var(--wax); letter-spacing: -0.01em; font-size: 1.1em; line-height: 1; margin-top: 4px; }
+
+.hero { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; padding-top: 24px; }
 .copy { display: flex; flex-direction: column; gap: 24px; align-items: flex-start; }
-h1 { font-size: clamp(44px, 6.4vw, 84px); line-height: 1.02; letter-spacing: -0.035em; }
-h1 em { display: block; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; color: var(--wax); letter-spacing: -0.01em; font-size: 1.08em; }
-.lede { font-size: 19px; line-height: 30px; color: var(--text-2); max-width: 520px; }
-.ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+h1 { font-size: clamp(44px, 6vw, 80px); line-height: 1.02; letter-spacing: -0.035em; font-weight: 500; }
+.lede { font-size: 19px; line-height: 30px; color: var(--text-2); max-width: 500px; }
+.lede.small { font-size: 17px; line-height: 28px; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
 .cta { width: auto; text-decoration: none; }
-.art { position: relative; min-height: 440px; }
-.env { position: absolute; width: min(440px, 92%); }
-.env.back { top: 0; right: 0; transform: rotate(5deg); opacity: 0.85; }
-.env.front { bottom: 0; left: 0; transform: rotate(-3deg); filter: drop-shadow(0 24px 40px rgba(60, 40, 20, 0.16)); }
-.dark { background: #1c1a17; color: #f6f2ea; padding: 96px 0; }
-.stackl { display: flex; flex-direction: column; gap: 24px; padding-top: 96px; padding-bottom: 96px; }
-.dark .stackl, .paper .stackl, .close .wrap { padding-top: 0; padding-bottom: 0; }
-.quote { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: clamp(36px, 5vw, 64px); line-height: 1.1; }
-.body { font-size: 19px; line-height: 30px; max-width: 760px; }
-.light { color: #bdb6aa; }
-.compare { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
-.cmp { background: #2a2724; border-radius: var(--r-card); padding: 24px; display: flex; flex-direction: column; gap: 8px; }
-.cmp.us { background: var(--wax); }
-.k { font-family: var(--mono); font-size: 12px; color: #9b948a; text-transform: uppercase; letter-spacing: 0.08em; }
-.us .k { color: #ffd9d4; }
-.v { font-size: 20px; line-height: 28px; font-weight: 500; }
-.kicker { font-family: var(--mono); font-size: 13px; color: var(--wax); text-transform: uppercase; letter-spacing: 0.1em; }
-h2 { font-size: clamp(32px, 4.4vw, 56px); line-height: 1.08; letter-spacing: -0.03em; }
-.cards { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 16px; }
-.three { grid-template-columns: repeat(3, 1fr); }
-.cards .card { display: flex; flex-direction: column; gap: 10px; padding: 28px; }
-.n { font-family: var(--mono); font-size: 13px; color: var(--wax); }
-h3 { font-size: 26px; line-height: 32px; letter-spacing: -0.01em; }
-.cards p { color: var(--text-2); font-size: 16px; line-height: 25px; }
-.paper { background: var(--paper); padding: 96px 0; }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 8px; }
-.stat { display: flex; flex-direction: column; gap: 6px; }
-.stat p { color: var(--text-2); font-size: 14px; }
-.stat strong { font-size: 32px; line-height: 38px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.wax { color: var(--wax); }
-.fit { width: auto; align-self: flex-start; }
-.step .btn { margin-top: auto; text-decoration: none; }
-.ico { width: 40px; height: 40px; border-radius: 12px; background: var(--wax-soft); color: var(--wax); display: grid; place-items: center; }
-.stores { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
-.store { min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border-radius: var(--r-control); background: var(--text); color: #fff; text-decoration: none; font-weight: 500; }
-.close { background: var(--wax); color: #fff; padding: 96px 0; }
-.center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
-.big { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: clamp(44px, 6vw, 76px); line-height: 1.05; }
-.sub { color: #ffd9d4; font-size: 19px; }
-.btn.white { background: #fff; color: var(--wax); width: auto; text-decoration: none; margin-top: 8px; }
-.btn.white:hover { background: #fff5f3; }
-.foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 32px; padding-bottom: 40px; }
+
+.dark { background: var(--ink); color: #f4f0e8; padding: 112px 0; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 20px; align-items: flex-start; }
+.quote { font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(40px, 4.6vw, 60px); line-height: 1.08; }
+.dark .body { color: #b8b1a5; font-size: 18px; line-height: 29px; }
+.compare { margin: 0; border-top: 1px solid rgba(244, 240, 232, 0.12); }
+.compare div { display: grid; grid-template-columns: 128px 1fr; gap: 16px; padding: 20px 0; border-bottom: 1px solid rgba(244, 240, 232, 0.12); }
+.compare dt { font-family: var(--mono); font-size: 13px; color: #8f887c; padding-top: 2px; }
+.compare dd { margin: 0; font-size: 19px; line-height: 28px; color: #d8d2c7; }
+.compare .us dt { color: #ff9c90; }
+.compare .us dd { color: #fff; font-weight: 500; }
+
+.block { padding-top: 112px; padding-bottom: 112px; }
+.head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 48px; }
+h2 { font-size: clamp(32px, 4vw, 52px); line-height: 1.08; letter-spacing: -0.03em; font-weight: 500; }
+h3 { font-size: 22px; line-height: 28px; font-weight: 500; letter-spacing: -0.01em; }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; position: relative; }
+.timeline::before { content: ''; position: absolute; top: 20px; left: 20px; right: 20px; height: 1px; background: var(--line-strong); }
+.timeline li { position: relative; display: flex; flex-direction: column; gap: 12px; }
+.timeline p, .steps p { color: var(--text-2); font-size: 16px; line-height: 25px; max-width: 320px; }
+.dot { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--counter); box-shadow: inset 0 0 0 1.5px var(--wax); color: var(--wax); font-family: var(--mono); font-size: 14px; flex: none; }
+
+.paper { background: var(--paper); padding: 112px 0; border-top: 1px solid var(--paper-line); border-bottom: 1px solid var(--paper-line); }
+.facts { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.facts li { position: relative; padding-left: 20px; color: var(--text-2); font-size: 16px; line-height: 24px; }
+.facts li::before { content: ''; position: absolute; left: 0; top: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--ready); }
+.fit { width: auto; align-self: flex-start; text-decoration: none; }
+
+.slip { position: relative; margin: 0; background: #fffdf8; border-radius: 4px; padding: 28px 32px 32px; box-shadow: 0 1px 2px rgba(40, 28, 12, 0.06), 0 20px 40px rgba(40, 28, 12, 0.08); transform: rotate(1deg);
+  -webkit-mask: radial-gradient(circle 6px at 50% 0, #0000 98%, #000) 0 0 / 20px 100% repeat-x; mask: radial-gradient(circle 6px at 50% 0, #0000 98%, #000) 0 0 / 20px 100% repeat-x; }
+.sliphead { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--text-3); padding-bottom: 16px; border-bottom: 1px dashed var(--line-strong); }
+.slip dl { margin: 8px 0 0; }
+.line { display: flex; align-items: baseline; gap: 12px; padding: 12px 0; }
+.line dt { font-size: 16px; color: var(--text-2); }
+.leader { flex: 1; border-bottom: 1px dotted var(--line-strong); transform: translateY(-4px); }
+.line dd { margin: 0; font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; color: var(--text); }
+.line dd.wax { color: var(--wax); }
+.pending { font-size: 14px; color: var(--text-3); }
+.slipfoot { margin-top: 12px; padding-top: 16px; border-top: 1px dashed var(--line-strong); font-family: var(--mono); font-size: 12px; color: var(--text-3); max-width: 70%; }
+.slipstamp { position: absolute; right: 20px; bottom: 12px; }
+
+.start { align-items: start; }
+.steps { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card); box-shadow: var(--shadow-sm); }
+.steps li { display: flex; gap: 20px; padding: 24px; }
+.steps li + li { border-top: 1px solid var(--line); }
+.stepbody { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.stepbody .btn { margin-top: 8px; }
+.stores { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.badge { display: inline-flex; min-height: 44px; align-items: center; }
+.badge img { display: block; height: 44px; width: auto; }
+/* Google's badge PNG includes its required clear space, so it renders taller to match. */
+.badge.gp img { height: 64px; margin: -10px -9px; }
+
+.close { padding: 112px 0; border-top: 1px solid var(--line); }
+.closing { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 16px; }
+.big { font-family: 'Instrument Serif', Georgia, serif; font-size: clamp(48px, 6vw, 80px); line-height: 1.02; margin-top: 8px; }
+.sub { color: var(--text-2); font-size: 18px; margin-bottom: 8px; }
+.closing .fit { align-self: center; }
+.foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 32px; padding-bottom: 40px; border-top: 1px solid var(--line); }
+
 @media (max-width: 860px) {
-  .hero { grid-template-columns: 1fr; padding-bottom: 64px; }
-  .art { min-height: 330px; }
-  .three, .compare { grid-template-columns: 1fr; }
-  .stats { grid-template-columns: 1fr 1fr; }
-  .navlinks a:not(.pill) { display: none; }
-  .stackl { padding-top: 64px; padding-bottom: 64px; }
-  .dark, .paper, .close { padding: 64px 0; }
+  .nav { min-height: 64px; }
+  .navlinks a:not(.navbtn) { display: none; }
+  .hero, .split { grid-template-columns: 1fr; }
+  .hero { min-height: 0; max-height: none; gap: 40px; padding-top: 24px; }
   .ctas, .ctas .cta { width: 100%; }
+  .dark, .paper, .close { padding: 72px 0; }
+  .block { padding-top: 72px; padding-bottom: 72px; }
+  .split { gap: 40px; }
+  .timeline { grid-template-columns: 1fr; gap: 28px; }
+  .timeline::before { top: 20px; bottom: 20px; left: 20px; right: auto; width: 1px; height: auto; }
+  .timeline li { padding-left: 60px; }
+  .timeline .dot { position: absolute; left: 0; top: -4px; }
+  .compare div { grid-template-columns: 1fr; gap: 4px; }
+  .slip { padding: 24px 20px 28px; transform: none; }
+  .slipfoot { max-width: 60%; }
+  .steps li { padding: 20px; gap: 16px; }
 }
 </style>
