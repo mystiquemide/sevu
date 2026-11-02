@@ -150,7 +150,7 @@ try {
     await page.close()
   }
 
-  async function walletPage({ reject = false } = {}) {
+  async function walletPage({ reject = false, intro = false } = {}) {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })
     const page = await ctx.newPage()
     const signer = privateKeyToAccount(ownerKey)
@@ -161,6 +161,8 @@ try {
       return signer.signTypedData({ domain: td.domain, types, primaryType: td.primaryType, message: td.message })
     })
     await page.exposeFunction('__send', async (tx) => ownerWallet.sendTransaction({ to: tx.to, data: tx.data }))
+    // Returning users skip the first-visit intro; one test below walks through it.
+    if (!intro) await page.addInitScript(() => { try { localStorage.setItem('sevu:intro-seen', '1') } catch {} })
     await page.addInitScript(({ address, reject }) => {
       let chainId = '0x1'
       let account = address
@@ -196,6 +198,29 @@ try {
     if (label) await page.getByLabel(/Name it/).fill(label)
     await page.getByRole('button', { name: 'Review' }).click()
     await page.getByRole('button', { name: 'Seal it' }).click()
+  }
+
+  // 1b. First-visit intro ends in a prefilled trial lock
+  {
+    const page = await walletPage({ intro: true })
+    await page.goto(APP)
+    await page.getByText('one tap away from becoming new shoes').waitFor({ timeout: 15000 })
+    await audit(page, '00b-intro-1'); await shot(page, '00b-intro-1')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByText('Every savings lock asks you to trust someone').waitFor()
+    await audit(page, '00c-intro-2'); await shot(page, '00c-intro-2')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByText('So we built Sevu').waitFor()
+    await audit(page, '00d-intro-3'); await shot(page, '00d-intro-3')
+    await page.getByRole('button', { name: /Try a 15-minute lock/ }).click()
+    await page.getByLabel('How much?').waitFor()
+    const amount = await page.getByLabel('How much?').inputValue()
+    const pressed = await page.getByRole('button', { name: '15 min' }).getAttribute('aria-pressed')
+    check('intro leads to a prefilled 15-minute, 1 USDT trial lock', amount === '1' && pressed === 'true')
+    await page.reload()
+    await page.getByText('Locked in Sevu').waitFor({ timeout: 15000 })
+    check('intro shows only once', (await page.getByText('So we built Sevu').count()) === 0)
+    await page.close()
   }
 
   // 2. Cancel flow
@@ -412,7 +437,7 @@ try {
     nimState.staker = { ...nimState.staker, balance: 100_00000 }
     await page.getByRole('tab', { name: 'USDT locks' }).click()
     await page.getByRole('tab', { name: 'NIM jars' }).click()
-    await page.getByText('Less is staked than your jars add up to').waitFor({ timeout: 15000 })
+    await page.getByText('Your jars add up to more than is staked').waitFor({ timeout: 15000 })
     check('jars shrink to what is really staked when stake moves outside Sevu', await page.getByText('100 of 1,000 NIM').isVisible())
   }
   await browser.close()

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Address } from 'viem'
 import AccountSheet from './components/AccountSheet.vue'
 import CreateLock from './components/CreateLock.vue'
+import Intro from './components/Intro.vue'
 import Jars from './components/Jars.vue'
 import Envelope from './components/Envelope.vue'
 import LockDetail from './components/LockDetail.vue'
@@ -17,7 +18,7 @@ import { shortNq } from './lib/nimiq'
 import { lockProgress, lockStatus, lockTitle, statusLabel } from './lib/lockView'
 import { connect, evmProvider, switchToPolygon, watchWallet, type WalletSnapshot } from './lib/wallet'
 
-type View = 'loading' | 'outside' | 'error' | 'home' | 'create' | 'detail' | 'rescue'
+type View = 'loading' | 'outside' | 'error' | 'home' | 'intro' | 'create' | 'detail' | 'rescue'
 
 const view = ref<View>('loading')
 const owner = ref<Address | null>(null)
@@ -32,6 +33,17 @@ const metaVersion = ref(0)
 const wrongChain = ref(false)
 const mode = ref<'locks' | 'jars'>('locks')
 const showAccount = ref(false)
+const trial = ref(false)
+const INTRO_KEY = 'sevu:intro-seen'
+function introSeen(): boolean {
+  try { return localStorage.getItem(INTRO_KEY) === '1' } catch { return true }
+}
+function finishIntro(next: 'trial' | 'proof' | 'skip') {
+  try { localStorage.setItem(INTRO_KEY, '1') } catch { /* private mode: show the intro again next time */ }
+  if (next === 'proof') { go('home'); openProof() }
+  else if (next === 'trial') { trial.value = true; go('create') }
+  else go('home')
+}
 // The proof page needs no wallet, so it opens on top of whatever state the app is in.
 const showProof = ref(typeof location !== 'undefined' && location.hash === '#/proof')
 function openProof() {
@@ -122,7 +134,7 @@ async function start() {
   view.value = 'loading'
   try {
     owner.value = await connect()
-    view.value = location.hash === '#/rescue' ? 'rescue' : 'home'
+    view.value = location.hash === '#/rescue' ? 'rescue' : introSeen() ? 'home' : 'intro'
     stopWatching?.()
     stopWatching = watchWallet(onWallet)
     await refresh()
@@ -242,7 +254,9 @@ onUnmounted(() => {
       <button class="btn" @click="start">Try again</button>
     </section>
 
-    <CreateLock v-else-if="view === 'create' && owner" :owner="owner" :balance="balance" :now="now" @done="afterCreate" @cancel="go('home')" />
+    <Intro v-else-if="view === 'intro'" :now="now" @trial="finishIntro('trial')" @proof="finishIntro('proof')" @skip="finishIntro('skip')" />
+
+    <CreateLock v-else-if="view === 'create' && owner" :owner="owner" :balance="balance" :now="now" :trial="trial" @done="trial = false; afterCreate()" @cancel="trial = false; go('home')" />
 
     <LockDetail v-else-if="view === 'detail' && owner && selected" :key="selected.key" :lock="selected" :owner="owner" :now="now"
       @back="go('home')" @changed="changed" @rescue="go('rescue')" />
@@ -264,6 +278,10 @@ onUnmounted(() => {
           <p class="meta">{{ formatUsdt(balance) }} USDT available</p>
         </div>
         <button class="btn" :disabled="wrongChain" @click="go('create')">Lock USDT</button>
+        <div class="trust">
+          <p class="small secondary">No owner. No admin. Nobody can move it early, not even us.</p>
+          <a class="link" href="#/proof" @click.prevent="openProof">See the proof</a>
+        </div>
       </div>
 
       <p v-if="error" class="notice error" role="alert"><strong>{{ error.title }}</strong>{{ error.action }}</p>
@@ -326,5 +344,6 @@ onUnmounted(() => {
 .list { padding: 4px; display: flex; flex-direction: column; gap: 2px; }
 .history summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--text-2); }
 .history .list { margin-top: 8px; }
+.trust { display: flex; flex-direction: column; align-items: flex-start; }
 .foot { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 </style>

@@ -11,13 +11,15 @@ import { lockNonce } from '../lib/chain'
 import { Check, LoaderCircle } from 'lucide-vue-next'
 import Envelope from './Envelope.vue'
 
-const props = defineProps<{ owner: Address; balance: bigint; now: number }>()
+const props = defineProps<{ owner: Address; balance: bigint; now: number; trial?: boolean }>()
 const emit = defineEmits<{ done: []; cancel: [] }>()
 
 // Relayer requires 5 minutes plus an inclusion margin; 10 minutes keeps a safe buffer.
 const MIN_LEAD_SEC = 10 * 60
 const DAY = 86_400
 const durations = [
+  // Short enough to see the whole loop (lock, refused early, withdraw) in one sitting.
+  { label: '15 min', sec: 15 * 60 },
   { label: '1 week', sec: 7 * DAY },
   { label: '1 month', sec: 30 * DAY },
   { label: '3 months', sec: 91 * DAY },
@@ -28,10 +30,10 @@ const amountChips = [1_000_000n, 5_000_000n, 10_000_000n]
 
 type Stage = 'form' | 'review' | 'signing' | 'result'
 const stage = ref<Stage>('form')
-const amountText = ref('')
-const duration = ref<number | 'custom'>(30 * DAY)
+const amountText = ref(props.trial ? '1' : '')
+const duration = ref<number | 'custom'>(props.trial ? 15 * 60 : 30 * DAY)
 const customDate = ref('')
-const label = ref('')
+const label = ref(props.trial ? 'First try' : '')
 const step = ref<FlowStep | null>(null)
 const error = ref<FriendlyError | null>(null)
 const txHash = ref<Hash | null>(null)
