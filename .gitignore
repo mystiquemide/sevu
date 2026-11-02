@@ -1,2 +1,13 @@
 PROJECT_PLAN.md
 PROJECT_STATE.md
+
+# Local working files, never published
+mockups/
+VPS_AGENT_PROMPT.md
+sevu-signing-test.html
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+!app/.env.production

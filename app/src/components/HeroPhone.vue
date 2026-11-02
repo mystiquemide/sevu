@@ -11,6 +11,7 @@ const rent = props.now + 21 * day
 </script>
 
 <template>
+  <figure class="shot">
   <div class="stage" aria-hidden="true">
     <div class="phone">
       <div class="island" />
@@ -39,9 +40,13 @@ const rent = props.now + 21 * day
       </div>
     </div>
   </div>
+  <figcaption class="cap">Example screen with sample amounts. Live totals are on the proof page.</figcaption>
+  </figure>
 </template>
 
 <style scoped>
+.shot { margin: 0; }
+.cap { text-align: center; font-family: var(--mono); font-size: 12px; color: var(--text-3); margin-top: 8px; }
 /* The phone fills the stage and runs off its foot; the satellite straddles the phone's left edge. */
 .stage { position: relative; height: 660px; overflow: hidden; -webkit-mask: linear-gradient(#000 90%, #0000); mask: linear-gradient(#000 90%, #0000); }
 .phone { position: absolute; left: 50%; top: 8px; width: 340px; height: 700px; margin-left: -170px; border-radius: 52px; background: #121110; padding: 10px;

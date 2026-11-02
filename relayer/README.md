@@ -37,7 +37,7 @@ Put `deploy/Caddyfile` (with your domain) in `/etc/caddy/Caddyfile` and reload C
 | Method | Path | Body |
 |---|---|---|
 | POST | `/v1/deposits` | `{ intent, intentSig, permit }` |
-| POST | `/v1/withdrawals` | `{ lockId }` |
+| POST | `/v1/withdrawals` | `{ lockId, contract? }` (contract defaults to the current SevuLock) |
 | GET | `/v1/health` | none |
 
 Errors return `{ error: { code, message, data? } }`.

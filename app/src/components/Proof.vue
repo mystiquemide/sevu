@@ -12,12 +12,13 @@ defineEmits<{ back: [] }>()
 const stats = ref<(ProofStats & { contractTotal: bigint }) | null>(null)
 const failed = ref(false)
 // The free-locking service is the one part Sevu runs; show whether it is up. The contract works without it.
-const service = ref<{ ok: boolean; block?: string } | null>(null)
+const service = ref<{ ok: boolean; low?: boolean; block?: string } | null>(null)
 async function checkService() {
   try {
     const r = await fetch(`${config.relayerUrl}/v1/health`, { signal: AbortSignal.timeout(8000) })
     const j = (await r.json()) as { status?: string; blockNumber?: string }
-    service.value = { ok: r.ok && j.status === 'ok', block: j.blockNumber }
+    // 'low' means the gas wallet needs a top-up soon; the service still answers and relays.
+    service.value = { ok: r.ok && (j.status === 'ok' || j.status === 'low'), low: j.status === 'low', block: j.blockNumber }
   } catch {
     service.value = { ok: false }
   }
@@ -101,7 +102,7 @@ const evidence = [
     <div v-if="service" class="card status" role="status">
       <span class="dot" :class="{ ok: service.ok }" aria-hidden="true" />
       <p class="small">
-        <strong>{{ service.ok ? 'Free locking service is online' : 'Free locking service is not responding' }}</strong>
+        <strong>{{ !service.ok ? 'Free locking service is not responding' : service.low ? 'Free locking service is online, gas running low' : 'Free locking service is online' }}</strong>
         <span class="secondary">{{ service.ok ? `Polygon block ${Number(service.block).toLocaleString('en-US')}` : 'Existing locks are safe. You can still withdraw directly from the contract.' }}</span>
       </p>
     </div>
