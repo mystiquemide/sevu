@@ -9,6 +9,8 @@ import {
   type Staker, type Validator,
 } from '../lib/nimiq'
 
+const emit = defineEmits<{ account: [address: string] }>()
+
 type Stage = 'loading' | 'error' | 'list' | 'new' | 'add' | 'done'
 
 const stage = ref<Stage>('loading')
@@ -59,6 +61,7 @@ async function load() {
     const keep = accounts.value.find((a) => a.address === address.value)
     const chosen = keep ?? accounts.value[0]!
     address.value = chosen.address
+    emit('account', chosen.address)
     balance.value = chosen.balance
     step = 'stake'
     staker.value = await stakerOf(address.value)

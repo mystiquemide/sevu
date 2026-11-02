@@ -12,6 +12,7 @@ import Wordmark from './components/Wordmark.vue'
 import { chainTime, locksOf, usdtBalance, type LockRecord } from './lib/chain'
 import { friendlyError, type FriendlyError } from './lib/errors'
 import { formatUsdt, shortAddress } from './lib/format'
+import { shortNq } from './lib/nimiq'
 import { lockProgress, lockStatus, lockTitle, statusLabel } from './lib/lockView'
 import { connect, evmProvider, switchToPolygon, watchWallet, type WalletSnapshot } from './lib/wallet'
 
@@ -30,6 +31,10 @@ const metaVersion = ref(0)
 const wrongChain = ref(false)
 const mode = ref<'locks' | 'jars'>('locks')
 const showAccount = ref(false)
+// The address the header shows follows the tab: Polygon for USDT locks, Nimiq for NIM jars.
+const nimAddress = ref<string | null>(null)
+const headerAddress = computed(() => (mode.value === 'jars' && view.value === 'home' ? nimAddress.value : owner.value))
+const headerNetwork = computed<'polygon' | 'nimiq'>(() => (mode.value === 'jars' && view.value === 'home' ? 'nimiq' : 'polygon'))
 const switching = ref(false)
 let stopWatching: (() => void) | undefined
 // Chain time is the source of truth; keep an offset so countdowns tick locally between reads.
@@ -181,12 +186,14 @@ onUnmounted(() => {
 <template>
   <header class="top row">
     <Wordmark />
-    <button v-if="owner" class="account meta" :aria-label="`Wallet ${shortAddress(owner)}. Show address`" @click="showAccount = true">
-      {{ shortAddress(owner) }}
+    <button v-if="headerAddress" class="account meta"
+      :aria-label="`${headerNetwork === 'nimiq' ? 'Nimiq account' : 'Wallet'} ${headerNetwork === 'nimiq' ? shortNq(headerAddress) : shortAddress(headerAddress)}. Show address`"
+      @click="showAccount = true">
+      {{ headerNetwork === 'nimiq' ? shortNq(headerAddress) : shortAddress(headerAddress) }}
     </button>
   </header>
 
-  <AccountSheet v-if="showAccount && owner" :address="owner" @close="showAccount = false" />
+  <AccountSheet v-if="showAccount && headerAddress" :key="headerNetwork" :address="headerAddress" :network="headerNetwork" @close="showAccount = false" />
 
   <div v-if="wrongChain && owner" class="notice plain chain" role="alert">
     <strong>Nimiq Pay is not on Polygon</strong>
@@ -231,7 +238,7 @@ onUnmounted(() => {
         <button role="tab" class="mode" :aria-selected="mode === 'locks'" @click="mode = 'locks'">USDT locks</button>
         <button role="tab" class="mode" :aria-selected="mode === 'jars'" @click="mode = 'jars'">NIM jars</button>
       </div>
-      <Jars v-if="mode === 'jars'" />
+      <Jars v-if="mode === 'jars'" @account="(a) => (nimAddress = a)" />
       <template v-else>
       <div class="group">
         <div class="stack">

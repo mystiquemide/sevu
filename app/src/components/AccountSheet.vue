@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
-import type { Address } from 'viem'
 import { Check, Copy, X } from 'lucide-vue-next'
 
-const props = defineProps<{ address: Address }>()
+const props = defineProps<{ address: string; network: 'polygon' | 'nimiq' }>()
 const emit = defineEmits<{ close: [] }>()
 const copied = ref(false)
 const panel = ref<HTMLElement | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined
 
-// Groups of four make a long address checkable by eye against Nimiq Pay.
-const grouped = props.address.slice(2).match(/.{1,4}/g)!.join(' ')
+// Groups of four make a long address checkable by eye against Nimiq Pay. Nimiq addresses already come grouped.
+const isEvm = props.network === 'polygon'
+const prefix = isEvm ? '0x' : ''
+const grouped = isEvm ? props.address.slice(2).match(/.{1,4}/g)!.join(' ') : props.address
 
 async function copy() {
   try {
@@ -39,15 +40,19 @@ onUnmounted(() => {
   <div class="scrim" @click="emit('close')" />
   <div ref="panel" class="sheet" role="dialog" aria-modal="true" aria-labelledby="account-title" tabindex="-1">
     <div class="row">
-      <h2 id="account-title" class="section-title">Your wallet</h2>
+      <h2 id="account-title" class="section-title">{{ isEvm ? 'Your Polygon wallet' : 'Your Nimiq account' }}</h2>
       <button class="icon-btn" aria-label="Close" @click="emit('close')"><X :size="18" :stroke-width="1.5" /></button>
     </div>
-    <p class="address"><span class="muted">0x</span>{{ grouped }}</p>
+    <p class="address"><span v-if="prefix" class="muted">{{ prefix }}</span>{{ grouped }}</p>
     <button class="btn secondary" @click="copy">
       <component :is="copied ? Check : Copy" :size="16" :stroke-width="1.5" />
       {{ copied ? 'Copied' : 'Copy address' }}
     </button>
-    <p class="secondary small">Sevu uses the Polygon account selected in Nimiq Pay. To use another account, switch it in Nimiq Pay and Sevu follows.</p>
+    <p class="secondary small">
+      {{ isEvm
+        ? 'USDT locks use the Polygon account selected in Nimiq Pay. To use another account, switch it in Nimiq Pay and Sevu follows.'
+        : 'NIM jars use this Nimiq account from Nimiq Pay. If Nimiq Pay shares several, pick one on the jars screen.' }}
+    </p>
   </div>
 </template>
 
