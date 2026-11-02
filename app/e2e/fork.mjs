@@ -350,7 +350,11 @@ try {
         // Like the phone run: an empty account is listed first, the funded one second, and getBalance is unreliable
         async listAccounts() { return [empty, addr] },
         async getBalance() { return 0 },
-        async sendNewStakerTransaction(tx) { return window.__nimStake('new', tx.value, tx.delegation) },
+        async sendNewStakerTransaction(tx) {
+          // First call reproduces the Nimiq Pay host bug seen on a real phone; later calls succeed
+          if (!window.__bugShown) { window.__bugShown = true; const e = new Error('An unknown error occurred: expected instance of Address'); e.type = 'INTERNAL_ERROR'; e.code = -32603; throw e }
+          return window.__nimStake('new', tx.value, tx.delegation)
+        },
         async sendStakeTransaction(tx) { return window.__nimStake('stake', tx.value, null) },
       }
     }, { addr: NIM_ADDR, empty: NIM_EMPTY })
@@ -374,8 +378,11 @@ try {
     await shot(page, '12-jar-stake')
     await audit(page, '12-jar-stake')
     await page.getByRole('button', { name: 'Stake' }).click()
+    await page.getByText('Nimiq Pay cannot start a new stake from mini apps yet').waitFor({ timeout: 15000 })
+    check('host new-staker bug is explained and nothing is staked (AMD-003)', nimState.staker === null)
+    await page.getByRole('button', { name: 'Stake' }).click()
     await page.getByRole('heading', { name: 'Staked' }).waitFor({ timeout: 20000 })
-    check('first stake creates the staker with the chosen validator', nimState.staker?.balance === 150_00000 && nimState.staker?.delegation === VALIDATORS[0].address)
+    check('first stake creates the staker with the chosen validator (compact address)', nimState.staker?.balance === 150_00000 && nimState.staker?.delegation === VALIDATORS[0].address.replace(/\s+/g, ''))
     await page.getByRole('button', { name: 'Back to jars' }).click()
     await page.getByText('150 of 1,000 NIM').waitFor({ timeout: 15000 })
     check('jar progress reads 150 of 1,000 NIM (15%)', await page.getByText('15%').isVisible())

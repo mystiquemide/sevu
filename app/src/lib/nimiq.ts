@@ -90,7 +90,15 @@ export async function addStake(value: number, firstTime: { delegation: string } 
   const p = nimiqWallet()
   if (!p) throw new Error('NO_PROVIDER')
   const w = await p
-  return firstTime ? w.sendNewStakerTransaction({ delegation: firstTime.delegation, value }) : w.sendStakeTransaction({ value })
+  if (!firstTime) return w.sendStakeTransaction({ value })
+  // Nimiq Pay 2026-11: new-staker threw "expected instance of Address" with the documented spaced address.
+  // Compact form is tried as well; if the host still fails, callers explain it (AMD-003).
+  return w.sendNewStakerTransaction({ delegation: firstTime.delegation.replace(/\s+/g, ''), value })
+}
+
+/** The host bug seen on the first mainnet attempt: Nimiq Pay cannot create a new staker from a mini app. */
+export function isNewStakerHostBug(e: unknown): boolean {
+  return /expected instance of Address/i.test(String((e as { message?: string })?.message ?? e))
 }
 
 /** Polls the chain until active stake reaches at least `target`, up to about a minute. */

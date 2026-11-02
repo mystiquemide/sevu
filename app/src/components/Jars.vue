@@ -5,7 +5,7 @@ import { friendlyError, type FriendlyError } from '../lib/errors'
 import { jarShares, loadJars, saveJars, type Jar } from '../lib/jars'
 import { cleanLabel, MAX_LABEL } from '../lib/labels'
 import {
-  activeValidators, addStake, formatNim, LUNA, MIN_NEW_STAKE_LUNA, nimAccounts, nimBalance, parseNim, shortNq, stakerOf, waitForStake,
+  activeValidators, addStake, formatNim, isNewStakerHostBug, LUNA, MIN_NEW_STAKE_LUNA, nimAccounts, nimBalance, parseNim, shortNq, stakerOf, waitForStake,
   type Staker, type Validator,
 } from '../lib/nimiq'
 
@@ -115,7 +115,12 @@ async function stake() {
   } catch (e) {
     const f = friendlyError(e)
     if (f.cancelled) error.value = f
-    else {
+    else if (isNewStakerHostBug(e)) {
+      error.value = {
+        title: 'Nimiq Pay cannot start a new stake from mini apps yet',
+        action: 'Your NIM was not moved. Jars still track goals, and adding NIM works once you already stake.',
+      }
+    } else {
       // Nimiq Pay's own error, so a failure on a real device says what the host refused.
       const raw = e as { message?: string; type?: string; code?: number | string; data?: unknown }
       const detail = [raw?.type, raw?.code, raw?.message ?? String(e)].filter((x) => x !== undefined && x !== '').join(' · ').slice(0, 200)
