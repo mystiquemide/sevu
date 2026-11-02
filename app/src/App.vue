@@ -5,6 +5,7 @@ import AccountSheet from './components/AccountSheet.vue'
 import CreateLock from './components/CreateLock.vue'
 import Intro from './components/Intro.vue'
 import Jars from './components/Jars.vue'
+import Landing from './components/Landing.vue'
 import Envelope from './components/Envelope.vue'
 import LockDetail from './components/LockDetail.vue'
 import LockRow from './components/LockRow.vue'
@@ -209,6 +210,8 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <Landing v-if="view === 'outside' && !showProof" :now="now" @proof="openProof" />
+  <template v-else>
   <header class="top row">
     <Wordmark />
     <button v-if="headerAddress" class="account meta"
@@ -324,6 +327,7 @@ onUnmounted(() => {
       </footer>
     </section>
   </main>
+  </template>
 </template>
 
 <style scoped>
