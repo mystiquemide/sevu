@@ -200,6 +200,16 @@ try {
     await page.getByRole('button', { name: 'Seal it' }).click()
   }
 
+  // 1a. A browser wallet like MetaMask is not Nimiq Pay: visitors still get the landing page
+  {
+    const page = await browser.newPage()
+    await page.addInitScript(() => { window.ethereum = { request: async () => [], on() {}, removeListener() {} } })
+    await page.goto(APP)
+    await page.getByText('Open Sevu in Nimiq Pay').waitFor({ timeout: 5000 })
+    check('browser wallet without Nimiq Pay shows the landing page', true)
+    await page.close()
+  }
+
   // 1b. First-visit intro ends in a prefilled trial lock
   {
     const page = await walletPage({ intro: true })

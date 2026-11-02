@@ -17,7 +17,7 @@ import { friendlyError, type FriendlyError } from './lib/errors'
 import { formatUsdt, shortAddress } from './lib/format'
 import { shortNq } from './lib/nimiq'
 import { lockProgress, lockStatus, lockTitle, statusLabel } from './lib/lockView'
-import { connect, evmProvider, switchToPolygon, watchWallet, type WalletSnapshot } from './lib/wallet'
+import { connect, evmProvider, insideNimiqPay, switchToPolygon, watchWallet, type WalletSnapshot } from './lib/wallet'
 
 type View = 'loading' | 'outside' | 'error' | 'home' | 'intro' | 'create' | 'detail' | 'rescue'
 
@@ -127,8 +127,16 @@ function open(l: LockRecord) {
   go('detail')
 }
 
+/** Nimiq Pay injects its own marker. A browser wallet like MetaMask also injects window.ethereum, so that alone is not enough. */
+async function hostIsNimiqPay(): Promise<boolean> {
+  if (insideNimiqPay()) return true
+  // Give a slow host a moment to inject before showing the landing page.
+  await new Promise((r) => setTimeout(r, 400))
+  return insideNimiqPay()
+}
+
 async function start() {
-  if (!evmProvider()) {
+  if (!evmProvider() || !(await hostIsNimiqPay())) {
     view.value = 'outside'
     return
   }
