@@ -4,6 +4,8 @@ import { ArrowLeft, ExternalLink } from 'lucide-vue-next'
 import { config } from '../config'
 import { formatUsdt } from '../lib/format'
 import { readProof, type ProofStats } from '../lib/proof'
+import { ADMIN_PROBES, pickTarget, probeMissing, strangerWithdraw, type Target, type WithdrawResult } from '../lib/challenge'
+import { formatDate, shortAddress } from '../lib/format'
 
 defineEmits<{ back: [] }>()
 
@@ -29,6 +31,29 @@ async function load() {
     failed.value = true
   }
 }
+// "Try to break it": anyone, with no wallet, asks the live contract to break its own rules. Nothing is sent.
+const running = ref(false)
+const ran = ref(false)
+const challengeFailed = ref(false)
+const target = ref<Target | null>(null)
+const attempt = ref<WithdrawResult | null>(null)
+const probes = ref<{ name: string; missing: boolean }[]>([])
+async function runChallenge() {
+  running.value = true
+  challengeFailed.value = false
+  try {
+    target.value = await pickTarget()
+    attempt.value = target.value ? await strangerWithdraw(target.value) : null
+    const at = config.lockAddress!
+    probes.value = await Promise.all(ADMIN_PROBES.map(async (p) => ({ name: p.name, missing: await probeMissing(at, p.data) })))
+    ran.value = true
+  } catch {
+    challengeFailed.value = true
+  } finally {
+    running.value = false
+  }
+}
+
 onMounted(() => { void load(); void checkService() })
 
 const scan = (a: string) => `https://polygonscan.com/address/${a}`
@@ -81,6 +106,30 @@ const evidence = [
       </p>
     </div>
 
+    <div class="card group challenge">
+      <div class="stack">
+        <h2 class="section-title">Try to break it</h2>
+        <p class="secondary small">Ask the live contract to release a sealed lock early to a stranger, and to run the admin functions a custodial app would have. Nothing is sent and no wallet is needed.</p>
+      </div>
+      <button class="btn" :disabled="running" @click="runChallenge">{{ running ? 'Asking the contract' : ran ? 'Run again' : 'Run the checks' }}</button>
+      <p v-if="challengeFailed" class="notice error" role="alert"><strong>Could not reach Polygon</strong>Check your connection and run the checks again.</p>
+      <ul v-if="ran" class="results" aria-live="polite">
+        <li v-if="target && attempt">
+          <span class="mark" :class="attempt.kind === 'refused' ? 'ok' : 'warn'" aria-hidden="true" />
+          <span>
+            <strong>A stranger withdraws lock #{{ target.id }} ({{ formatUsdt(target.amount) }} USDT)</strong>
+            <span v-if="attempt.kind === 'refused'" class="secondary">Refused by the contract: {{ attempt.reason }}. It opens {{ formatDate(target.unlockAt) }}.</span>
+            <span v-else class="secondary">Allowed after the unlock date, and the contract can only pay the owner {{ shortAddress(target.owner) }}. The stranger gets nothing.</span>
+          </span>
+        </li>
+        <li v-else><span class="mark ok" aria-hidden="true" /><span class="secondary">No sealed locks right now, so there is nothing to withdraw.</span></li>
+        <li v-for="p in probes" :key="p.name">
+          <span class="mark" :class="p.missing ? 'ok' : 'warn'" aria-hidden="true" />
+          <span><strong class="mono">{{ p.name }}</strong><span class="secondary">{{ p.missing ? 'Does not exist on SevuLock' : 'Answered. Check this function on Sourcify' }}</span></span>
+        </li>
+      </ul>
+    </div>
+
     <div class="group">
       <h2 class="section-title">On-chain evidence</h2>
       <a v-for="e in evidence" :key="e.title" class="card evidence" :href="e.href" target="_blank" rel="noopener">
@@ -101,6 +150,14 @@ const evidence = [
 </template>
 
 <style scoped>
+.challenge { padding: 20px; }
+.results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.results li { display: flex; gap: 12px; align-items: flex-start; }
+.results li > span:last-child { display: flex; flex-direction: column; font-size: 14px; line-height: 20px; }
+.results strong { font-weight: 500; }
+.mono { font-family: var(--mono); font-size: 13px; }
+.mark { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--danger); }
+.mark.ok { background: var(--ready); }
 .status { display: flex; gap: 12px; align-items: flex-start; padding: 16px; }
 .status p { display: flex; flex-direction: column; }
 .status strong { font-weight: 500; }

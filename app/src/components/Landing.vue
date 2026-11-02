@@ -107,9 +107,9 @@ const day = 86_400
           <ul class="facts">
             <li>Contract source matched on Sourcify, with no owner, pause or upgrade function</li>
             <li>First gasless lock sent from Nimiq Pay on Polygon mainnet</li>
-            <li>An early withdrawal refused by the contract itself</li>
+            <li>Try to break it yourself: the proof page asks the live contract to release a lock early, and it refuses</li>
           </ul>
-          <button class="btn secondary fit" @click="$emit('proof')">Open the live proof page</button>
+          <button class="btn secondary fit" @click="$emit('proof')">Try to break it</button>
         </div>
         <figure class="slip">
           <figcaption class="sliphead">

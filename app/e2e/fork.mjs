@@ -308,6 +308,18 @@ try {
     check('after unlock time the home shows ready', true)
     await shot(page, '07-ripe')
     await audit(page, '07-ripe')
+    {
+      // Proof page "Try to break it": after the date a stranger may trigger withdraw, but only the owner can be paid
+      const proof = await page.context().newPage()
+      await proof.goto(`${APP}#/proof`)
+      await proof.getByRole('button', { name: 'Run the checks' }).click()
+      await proof.locator('.results').waitFor({ timeout: 20000 })
+      const txt = await proof.locator('.results').innerText()
+      check('proof page: stranger withdraw after the date can only pay the owner, admin functions absent',
+        txt.includes('can only pay the owner') && (txt.match(/Does not exist on SevuLock/g) ?? []).length === 5)
+      await audit(proof, '08-proof-challenge')
+      await proof.close()
+    }
     await page.getByRole('button', { name: /^Ready: Rent / }).click()
     await page.getByRole('button', { name: 'Withdraw to my wallet' }).click()
     await page.getByText('Withdrawn. 5.00 USDT is back in your wallet.').waitFor({ timeout: 60000 })
