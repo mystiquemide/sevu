@@ -1,4 +1,4 @@
-import { BaseError, ContractFunctionRevertedError, createPublicClient, encodeFunctionData, http, type Address, type Hash, type Hex } from 'viem'
+import { BaseError, ContractFunctionRevertedError, createPublicClient, encodeFunctionData, fallback, http, type Address, type Hash, type Hex } from 'viem'
 import { polygon } from 'viem/chains'
 import { config, USDT0 } from '../config'
 
@@ -47,7 +47,11 @@ export interface LockRecord {
   withdrawn: boolean
 }
 
-export const publicClient = createPublicClient({ chain: polygon, transport: http(config.rpcUrl, { timeout: 20_000, batch: { wait: 16 } }) })
+// Two public RPCs that accept batched calls from the browser. A dropped call on mobile data retries, then fails over.
+export const publicClient = createPublicClient({
+  chain: polygon,
+  transport: fallback(config.rpcUrls.map((url) => http(url, { timeout: 12_000, retryCount: 2, retryDelay: 400, batch: { wait: 16 } }))),
+})
 
 function lockAddress(): Address {
   if (!config.lockAddress) throw new Error('NOT_CONFIGURED')

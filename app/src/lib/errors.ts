@@ -33,9 +33,13 @@ export function friendlyError(err: unknown): FriendlyError {
   if (err instanceof RelayerError) {
     return RELAYER_MESSAGES[err.code] ?? { title: 'The request was refused', action: 'Try again. Nothing was moved.' }
   }
-  const e = err as { code?: number | string; type?: string; message?: string } | undefined
-  const msg = `${e?.type ?? ''} ${e?.message ?? ''}`
-  if (e?.code === 4001 || /reject|denied|cancel/i.test(msg)) {
+  const e = err as { code?: number | string; type?: string; name?: string; message?: string; shortMessage?: string } | undefined
+  const msg = `${e?.name ?? ''} ${e?.type ?? ''} ${e?.shortMessage ?? ''} ${e?.message ?? ''}`
+  // Network failures first: iOS reports a dropped request as "cancelled", which must not read as the user saying no.
+  if (/HttpRequestError|TimeoutError|Failed to fetch|Load failed|NetworkError|network connection was lost|took too long|ECONNRESET|fetch failed/i.test(msg)) {
+    return { title: 'Polygon is not reachable right now', action: 'Check your connection and try again. Your locks are safe in the contract.' }
+  }
+  if (e?.code === 4001 || e?.code === 'ACTION_REJECTED' || /UserRejected|user (rejected|denied|cancell?ed)|rejected by (the )?user|request (was )?rejected/i.test(msg)) {
     return { title: 'Signing cancelled', action: 'Nothing was moved. Start again whenever you like.', cancelled: true }
   }
   if (msg.includes('NO_PROVIDER')) return { title: 'No wallet found', action: 'Open Sevu inside Nimiq Pay.' }

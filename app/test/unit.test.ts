@@ -38,6 +38,17 @@ describe('error messages', () => {
     // Users never see internal names like the relayer or the build config.
     for (const m of Object.values(RELAYER_MESSAGES)) expect(`${m.title} ${m.action}`).not.toMatch(/relayer|configured/i)
   })
+  it('never shows a dropped network request as the user cancelling', () => {
+    for (const message of ['Load failed', 'Failed to fetch', 'cancelled', 'The network connection was lost.']) {
+      const f = friendlyError({ name: message === 'cancelled' ? 'HttpRequestError' : 'TypeError', message })
+      expect(f.cancelled).toBeFalsy()
+      expect(f.title).toBe('Polygon is not reachable right now')
+    }
+  })
+  it('still recognises a real user rejection', () => {
+    expect(friendlyError({ message: 'User rejected the request.' }).cancelled).toBe(true)
+    expect(friendlyError({ name: 'UserRejectedRequestError', message: 'x' }).cancelled).toBe(true)
+  })
   it('treats wallet rejection as a quiet cancel', () => {
     expect(friendlyError({ code: 4001, message: 'User rejected' }).cancelled).toBe(true)
   })

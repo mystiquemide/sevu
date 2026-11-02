@@ -24,5 +24,7 @@ export const config = {
   lockAddress: lockAddress(),
   legacyLocks: legacyLocks(),
   relayerUrl: ((import.meta.env.VITE_RELAYER_URL as string | undefined) ?? '').replace(/\/$/, ''),
-  rpcUrl: (import.meta.env.VITE_POLYGON_RPC as string | undefined) ?? 'https://polygon-bor-rpc.publicnode.com',
+  /** Comma-separated, tried in order. */
+  rpcUrls: ((import.meta.env.VITE_POLYGON_RPC as string | undefined) || 'https://polygon-bor-rpc.publicnode.com,https://polygon.drpc.org')
+    .split(',').map((s) => s.trim()).filter(Boolean),
 }
