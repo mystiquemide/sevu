@@ -52,6 +52,7 @@ Nimiq Pay (your keys) ── signs permit + intent ──> Relayer (pays gas, va
 | Deploy transaction | [`0xb8a6…82c8`](https://polygonscan.com/tx/0xb8a6255c2ee9a452587e5b059d1a0212988bb762be65126c734f41340ce282c8) |
 | Source match | [Sourcify](https://repo.sourcify.dev/137/0x1500B1fB05C8CC4C432B91Bf18F7BEcdD780d170) |
 | First lock, sent from Nimiq Pay with 0 POL in the wallet | [`0xc0e3…aa10`](https://polygonscan.com/tx/0xc0e32301ec752ef22dbd47f74041c5da02b68b348aeabc0cbfecf00a32d2aa10) |
+| That lock opened on 8 Nov and paid 1.00 USDT back to its owner, gas paid by the relayer | [`0x3b07…b5bb`](https://polygonscan.com/tx/0x3b079eb6fc3c252adab1304b2d68da32dbdd73c792137b786ee6b0b84ba1b5bb) |
 | Earlier SevuLock (same rules, holds that first lock) | [`0x27eb31d5783A3181Fadf39427eC45F552a6C00ef`](https://polygonscan.com/address/0x27eb31d5783A3181Fadf39427eC45F552a6C00ef) |
 
 ## Tested

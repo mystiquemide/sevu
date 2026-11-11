@@ -67,6 +67,8 @@ const evidence = [
     href: tx('0xb8a6255c2ee9a452587e5b059d1a0212988bb762be65126c734f41340ce282c8') },
   { title: 'First gasless lock', body: '1 USDT locked from Nimiq Pay with no gas paid by the saver. The relayer submitted it.',
     href: tx('0xc0e32301ec752ef22dbd47f74041c5da02b68b348aeabc0cbfecf00a32d2aa10') },
+  { title: 'First lock paid back on its date', body: 'Lock #0 opened on 8 Nov and the contract sent the full 1.00 USDT back to its owner. No gas paid by the saver.',
+    href: tx('0x3b079eb6fc3c252adab1304b2d68da32dbdd73c792137b786ee6b0b84ba1b5bb') },
   { title: 'NIM stake from Nimiq Pay', body: '100 NIM staked on Nimiq mainnet from inside the mini app, tracked by a jar.',
     href: 'https://nimiq.watch/#NQ202U0VY927PC3M33GME96Y1J2RRL3P8CVD' },
 ]
