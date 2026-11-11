@@ -11,3 +11,4 @@ sevu-signing-test.html
 .env.*
 !.env.example
 !app/.env.production
+submission/
