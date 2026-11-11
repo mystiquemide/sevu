@@ -4,9 +4,11 @@
 
 Sevu is a Nimiq Pay mini app that locks USDT until a date you choose. The money sits in a public contract on Polygon with no owner, no admin and no upgrade path. It opens on that date, and it only ever pays you.
 
-[Open the live app](https://sevu.midelabs.xyz) · [Try to break it](https://sevu.midelabs.xyz/#/proof) · [Contract on Polygonscan](https://polygonscan.com/address/0x1500B1fB05C8CC4C432B91Bf18F7BEcdD780d170) · [Verified source](https://repo.sourcify.dev/137/0x1500B1fB05C8CC4C432B91Bf18F7BEcdD780d170)
+[Watch the demo](https://youtu.be/J2G94uL6fbw) · [Open the live app](https://sevu.midelabs.xyz) · [Try to break it](https://sevu.midelabs.xyz/#/proof) · [Contract on Polygonscan](https://polygonscan.com/address/0x1500B1fB05C8CC4C432B91Bf18F7BEcdD780d170) · [Verified source](https://repo.sourcify.dev/137/0x1500B1fB05C8CC4C432B91Bf18F7BEcdD780d170)
 
-![Sevu](app/public/og.png)
+[![Sevu demo video](app/public/og.png)](https://youtu.be/J2G94uL6fbw)
+
+*77-second demo: [youtu.be/J2G94uL6fbw](https://youtu.be/J2G94uL6fbw)*
 
 ## Check it in 30 seconds
 
