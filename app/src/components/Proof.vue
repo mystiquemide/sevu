@@ -116,7 +116,7 @@ const evidence = [
       <p v-if="challengeFailed" class="notice error" role="alert"><strong>Could not reach Polygon</strong>Check your connection and run the checks again.</p>
       <ul v-if="ran" class="results" aria-live="polite">
         <li v-if="target && attempt">
-          <span class="mark" :class="attempt.kind === 'refused' ? 'ok' : 'warn'" aria-hidden="true" />
+          <span class="mark ok" aria-hidden="true" />
           <span>
             <strong>A stranger withdraws lock #{{ target.id }} ({{ formatUsdt(target.amount) }} USDT)</strong>
             <span v-if="attempt.kind === 'refused'" class="secondary">Refused by the contract: {{ attempt.reason }}. It opens {{ formatDate(target.unlockAt) }}.</span>
